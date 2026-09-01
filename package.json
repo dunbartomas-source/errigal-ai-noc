@@ -1,9 +1,9 @@
 {
   "name": "errigal-ai-noc",
-  "version": "1.1.0",
+  "version": "1.4.0",
   "private": true,
   "scripts": {
-    "build": "base64 -d source.tgz.b64 > source.tgz && tar -xzf source.tgz && next build && node scripts/provider-smoke.mjs",
+    "build": "node prepare-source.mjs && next build && node scripts/provider-smoke.mjs",
     "dev": "next dev",
     "start": "next start"
   },
