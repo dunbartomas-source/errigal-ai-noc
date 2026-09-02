@@ -14,21 +14,21 @@ type CorrelationDecision = "common_cause_supported" | "separate_incidents" | "un
 
 type RankedCause = {
   hypothesis: string;
-  confidence: Confidence;
+  confidence: Confidence | string;
   score: number;
-  evidence: string[];
+  evidence?: string[];
 };
 
 type ResolutionPattern = {
   root_cause: string;
   count: number;
-  common_action: string;
+  common_action?: string;
   success_rate?: number;
 };
 
 type LocalResolution = {
   ticket_id: string;
-  alarm_identifier: string;
+  alarm_identifier?: string;
   root_cause: string;
   action_taken: string;
   resolution_outcome: string;
