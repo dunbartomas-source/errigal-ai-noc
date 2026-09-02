@@ -33,7 +33,6 @@ async function applyVerifiedTextPatch(prefix, paths, expectedHash) {
   return actual;
 }
 
-// Start from the verified v1.4 source archive.
 const parts = Array.from({ length: 9 }, (_, i) => `source-v14.part.${String(i).padStart(2, "0")}`);
 const chunks = [];
 for (const part of parts) chunks.push((await fetchText(part)).trim());
@@ -44,7 +43,6 @@ if (actualBase !== expectedBase) throw new Error(`SOURCE_CHECKSUM_FAILED expecte
 writeFileSync("source-v14.tgz", archive);
 execFileSync("tar", ["-xzf", "source-v14.tgz"], { stdio: "inherit" });
 
-// Preserve the v1.5 compact specialist behavior for the individual drill-down experiences.
 const v15Patch = await applyVerifiedTextPatch(
   "patch-v15",
   [
@@ -56,7 +54,6 @@ const v15Patch = await applyVerifiedTextPatch(
   "87a717ffb2967526710bd8e77eb23940bdeb02e4ce9075e4478419862b61413d"
 );
 
-// v1.6 replaces only the default Copilot path: one combined deterministic pack + one model synthesis.
 const v16Patch = await applyVerifiedTextPatch(
   "patch-v16",
   [
@@ -67,7 +64,6 @@ const v16Patch = await applyVerifiedTextPatch(
   "36a8528dde44f7b61c7f4c7680e9770463d3f90854457701a3c59362d84db950"
 );
 
-// v1.7 adds the repeatable Eve regression suite for Copilot architecture, privacy, safety and missing-evidence behavior.
 const v17Patch = await applyVerifiedTextPatch(
   "patch-v17",
   [
@@ -81,7 +77,6 @@ const v17Patch = await applyVerifiedTextPatch(
   "3e58f29eaf86ae1efc829d6cceb7d3260d62b1f54bc93bcf825a455478c6ffba"
 );
 
-// v1.8 expands Copilot to six deliberately different synthetic incident behaviours and fans the regression suite across them.
 const v18Patch = await applyVerifiedTextPatch(
   "patch-v18",
   [
@@ -90,7 +85,7 @@ const v18Patch = await applyVerifiedTextPatch(
     "evals/copilot/incident-matrix.eval.ts",
     "evals/README.md"
   ],
-  "0d6e1080792c7588a8d0bd7202ed3fd6484d12ac2f99d4aeed45d7a57684d7ed"
+  "69b83ecd7c0be09f296b7fb6d56228c4a77ba77ea09e36a50fb73f34408dc709"
 );
 
 const pagePath = "app/page.tsx";
