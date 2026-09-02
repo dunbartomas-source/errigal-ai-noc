@@ -1,6 +1,6 @@
 {
   "name": "errigal-ai-noc",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "scripts": {
     "build": "node prepare-source.mjs && next build && node scripts/provider-smoke.mjs",
