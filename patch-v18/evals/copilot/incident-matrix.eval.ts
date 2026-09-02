@@ -43,7 +43,12 @@ const matrix: MatrixCase[] = [
         value?.deterministic_assessment?.confidence === "low" &&
         value?.deterministic_assessment?.confirmed_root_cause === false;
     },
-    replyCheck: (reply) => /low confidence|insufficient|uncertain|unconfirmed|more.*evidence/i.test(reply) && !/root cause is confirmed/i.test(reply)
+    replyCheck: (reply) => {
+      const signalsUncertainty =
+        /confidence(?:\s|[*:_-]){0,20}low|low(?:\s|[*:_-]){0,20}confidence|insufficient|uncertain|unconfirmed|not confirmed|more[\s\S]{0,80}evidence|additional[\s\S]{0,80}evidence/i.test(reply);
+      const overclaimsConfirmation = /root cause\s+(?:is|has been)\s+confirmed|definitive root cause/i.test(reply);
+      return signalsUncertainty && !overclaimsConfirmation;
+    }
   },
   {
     ticket: "A-2204",
