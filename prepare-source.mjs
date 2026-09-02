@@ -81,6 +81,18 @@ const v17Patch = await applyVerifiedTextPatch(
   "3e58f29eaf86ae1efc829d6cceb7d3260d62b1f54bc93bcf825a455478c6ffba"
 );
 
+// v1.8 expands Copilot to six deliberately different synthetic incident behaviours and fans the regression suite across them.
+const v18Patch = await applyVerifiedTextPatch(
+  "patch-v18",
+  [
+    "agent/lib/copilot_cases.ts",
+    "agent/tools/get_copilot_incident_evidence_pack.ts",
+    "evals/copilot/incident-matrix.eval.ts",
+    "evals/README.md"
+  ],
+  "0d6e1080792c7588a8d0bd7202ed3fd6484d12ac2f99d4aeed45d7a57684d7ed"
+);
+
 const pagePath = "app/page.tsx";
 let page = readFileSync(pagePath, "utf8");
 const copilotPrompt = '    const prompt = `Run the end-to-end AI-NOC Copilot workflow for tenant ${tenant.trim()} and ticket ${ticket.trim()}. Call get_copilot_incident_evidence_pack exactly once and synthesize the final answer directly from that pack. Do not delegate to any subagent and do not independently re-query after the pack succeeds. Use Incident Summary, Correlation & Likely Root Cause, Evidence That Matters, Recommended Troubleshooting & Resolution, Escalation / Closure Criteria, and Confidence, Freshness & Gaps. Keep it concise, distinguish local evidence from anonymized Errigal-wide evidence and OEM guidance, treat correlation/root-cause rankings as hypotheses rather than proof, and execute nothing.`;';
@@ -98,18 +110,19 @@ writeFileSync(pagePath, page);
 
 const healthPath = "app/api/health/route.ts";
 let health = readFileSync(healthPath, "utf8");
-health = health.replace(/version: "[^"]+"/, 'version: "1.7.0"');
+health = health.replace(/version: "[^"]+"/, 'version: "1.8.0"');
 if (!health.includes("copilot_architecture")) {
   health = health.replace('    model: "deepseek/deepseek-v3.2",', '    model: "deepseek/deepseek-v3.2",\n    copilot_architecture: "single_model_combined_evidence_pack",');
 }
-if (!health.includes("eval_suite")) {
-  health = health.replace('    copilot_architecture: "single_model_combined_evidence_pack",', '    copilot_architecture: "single_model_combined_evidence_pack",\n    eval_suite: "eve_copilot_regression_v1",');
+health = health.replace(/eval_suite: "[^"]+"/, 'eval_suite: "eve_copilot_regression_v2_incident_matrix"');
+if (!health.includes("synthetic_incident_cases")) {
+  health = health.replace('    eval_suite: "eve_copilot_regression_v2_incident_matrix",', '    eval_suite: "eve_copilot_regression_v2_incident_matrix",\n    synthetic_incident_cases: 6,');
 }
 health = health.replace('evidence_packs: ["get_incident_evidence_pack"', 'evidence_packs: ["get_copilot_incident_evidence_pack", "get_incident_evidence_pack"');
 writeFileSync(healthPath, health);
 
 let pkg = readFileSync("package.json", "utf8");
-pkg = pkg.replace(/"version": "[^"]+"/, '"version": "1.7.0"');
+pkg = pkg.replace(/"version": "[^"]+"/, '"version": "1.8.0"');
 writeFileSync("package.json", pkg);
 
-console.log(`SOURCE_OK base_sha256=${actualBase} v15_patch_sha256=${v15Patch} v16_patch_sha256=${v16Patch} v17_patch_sha256=${v17Patch} release=v1.7.0`);
+console.log(`SOURCE_OK base_sha256=${actualBase} v15_patch_sha256=${v15Patch} v16_patch_sha256=${v16Patch} v17_patch_sha256=${v17Patch} v18_patch_sha256=${v18Patch} release=v1.8.0`);
