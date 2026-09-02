@@ -1,0 +1,42 @@
+name: Eve Production Evals
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "patch-v19/**"
+      - "patch-v19b/**"
+      - "patch-v19c/**"
+      - "evals/**"
+      - "prepare-source.mjs"
+      - ".github/workflows/eve-production-evals.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eve-production-evals
+  cancel-in-progress: true
+
+jobs:
+  copilot-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Reconstruct checksum-verified source
+        run: node prepare-source.mjs
+
+      - name: Run strict Eve Copilot regression suite
+        run: npx eve eval copilot --url https://errigal-ai-noc.vercel.app --strict
