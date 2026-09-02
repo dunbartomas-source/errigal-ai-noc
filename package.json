@@ -3,7 +3,7 @@
   "version": "1.9.0",
   "private": true,
   "scripts": {
-    "build": "node prepare-source.mjs && next build && node scripts/provider-smoke.mjs",
+    "build": "node prepare-source.mjs && npx eve eval copilot --url https://errigal-ai-noc.vercel.app --strict && next build && node scripts/provider-smoke.mjs",
     "dev": "next dev",
     "start": "next start"
   },
