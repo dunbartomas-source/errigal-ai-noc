@@ -165,6 +165,43 @@ for (const marker of [
   }
 }
 
+const auditSource = readFileSync("agent/lib/tool_audit.ts", "utf8");
+for (const marker of ["MAX_AUDIT_EVENTS = 100", "metadata only", "input.stage"]) {
+  if (!auditSource.includes(marker)) {
+    throw new Error(`V113_TOOL_AUDIT_CONTRACT_MISSING ${marker}`);
+  }
+}
+
+for (const [toolPath, markers] of [
+  [
+    "agent/tools/get_investigation_state.ts",
+    ["recordToolAudit", 'tool: "get_investigation_state"'],
+  ],
+  [
+    "agent/tools/update_investigation_state.ts",
+    ["recordToolAudit", 'tool: "update_investigation_state"'],
+  ],
+  [
+    "agent/tools/get_oem_alarm_guidance.ts",
+    ["recordToolAudit", 'tool: "get_oem_alarm_guidance"'],
+  ],
+  [
+    "agent/tools/get_universal_context.ts",
+    ["recordToolAudit", 'tool: "get_universal_context"'],
+  ],
+  [
+    "agent/subagents/resolution-intelligence/tools/search_resolution_history.ts",
+    ["recordToolAudit", 'tool: "search_resolution_history"'],
+  ],
+]) {
+  const source = readFileSync(toolPath, "utf8");
+  for (const marker of markers) {
+    if (!source.includes(marker)) {
+      throw new Error(`V113_TOOL_AUDIT_COVERAGE_MISSING ${toolPath} ${marker}`);
+    }
+  }
+}
+
 for (const routePath of [
   "app/api/internal/oem-catalogue-check/route.ts",
   "app/api/internal/oem-catalogue-coverage/route.ts",
@@ -216,13 +253,25 @@ const stateTool = readFileSync("agent/tools/update_investigation_state.ts", "utf
 for (const prohibited of ["exec(", "acknowledgeAlarm", "closeTicket", "restartDevice"]) {
   if (stateTool.includes(prohibited)) throw new Error(`V113_STATE_SAFETY_VIOLATION ${prohibited}`);
 }
+for (const marker of [
+  "explicitlyConfirmsRecovery",
+  "rejected_missing_operator_recovery_confirmation",
+  "Resolved state requires explicit operator confirmation",
+]) {
+  if (!stateTool.includes(marker)) {
+    throw new Error(`V113_RESOLUTION_GUARD_MISSING ${marker}`);
+  }
+}
 
 const health = readFileSync("app/api/health/route.ts", "utf8");
 for (const marker of [
   'version: "1.13.0"',
   '"correlation-root-cause"',
   '"resolution-intelligence"',
+  '"oem-escalation"',
   "generic_agent_delegation: false",
+  "tool_audit",
+  '"search_resolution_history"',
 ]) {
   if (!health.includes(marker)) throw new Error(`V113_HEALTH_CONTRACT_MISSING ${marker}`);
 }
@@ -241,5 +290,5 @@ for (const testScript of [
 }
 
 console.log(
-  "V113_SOURCE_OK architecture=one-main-agent+4-skills+2-one-shot-specialists root_business_tools=4 disabled_defaults=7 trap_contract=separator_safe+comment_ignored+dedupe+conflict resolution_privacy=deterministic+fail_closed live_catalogue_harness=preview_only+aggregate mode=read_only",
+  "V113_SOURCE_OK architecture=one-main-agent+5-skills+2-one-shot-specialists root_business_tools=4 audited_deterministic_tools=5 disabled_defaults=7 trap_contract=separator_safe+comment_ignored+dedupe+conflict resolution_privacy=deterministic+fail_closed live_catalogue_harness=preview_only+aggregate mode=read_only",
 );

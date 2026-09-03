@@ -1,0 +1,14 @@
+/node_modules/
+/.next/
+/.eve/
+/.vercel/
+/agent/
+/app/
+/scripts/
+/evals/
+/tsconfig.json
+/tsconfig.tsbuildinfo
+/next-env.d.ts
+/next.config.mjs
+/source-v14.tgz
+/patch-v112.tgz

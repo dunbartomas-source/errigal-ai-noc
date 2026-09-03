@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineDynamic, defineTool } from "eve/tools";
 import { getCopilotIncidentCase } from "../lib/copilot_source";
 import { investigationState } from "../lib/investigation_state";
+import { ensureInvestigationId, recordToolAudit } from "../lib/tool_audit";
 
 const inputSchema = z
   .object({
@@ -125,6 +126,8 @@ export default defineDynamic({
           "Build universal read-only incident context from a ticket_id, network_identifier, OR alarm_identifier alone. Use for direct Context/Correlation, or to derive missing incident identity before OEM troubleshooting. Returns current facts, recent alarm/change evidence, topology/dependencies, related tickets, ordered timeline and explicit evidence gaps. Excludes historical resolution intelligence.",
         inputSchema,
         execute: async (input) => {
+          const startedAt = Date.now();
+          const investigationId = ensureInvestigationId();
           const tenant = input.tenant_id?.trim() || "customer-a";
           const lookup =
             input.ticket_id?.trim() ||
@@ -137,6 +140,18 @@ export default defineDynamic({
           );
 
           if (result.status !== "success" || !result.case_data) {
+            recordToolAudit({
+              actor: "ai-noc-investigator",
+              tool: "get_universal_context",
+              status: result.status,
+              started_at_ms: startedAt,
+              safe_row_count: 0,
+              source_class: "operational_context",
+              freshness: "requested_alarms_14d_changes_7d",
+              privacy_state: "metadata_only_no_raw_evidence_logged",
+              investigation_id: investigationId,
+              stage: "context_investigation",
+            });
             return {
               status: result.status,
               read_only: true,
@@ -251,6 +266,22 @@ export default defineDynamic({
             evidence_gaps: [...new Set([...current.evidence_gaps, ...output.evidence_gaps])],
             updated_at: new Date().toISOString(),
           }));
+
+          recordToolAudit({
+            actor: "ai-noc-investigator",
+            tool: "get_universal_context",
+            status: "success",
+            started_at_ms: startedAt,
+            safe_row_count:
+              output.recent_alarm_events.length +
+              output.recent_changes.length +
+              output.topology_dependencies.length,
+            source_class: "operational_context",
+            freshness: `alarms_${input.recent_alarm_days}d_changes_${input.recent_change_days}d`,
+            privacy_state: "metadata_only_no_raw_evidence_logged",
+            investigation_id: investigationId,
+            stage: "context_investigation",
+          });
 
           return output;
         },

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineTool } from "eve/tools";
+import { defineDynamic, defineTool } from "eve/tools";
 import {
   CHECK_STATUSES,
   ENTRY_MODES,
@@ -8,6 +8,36 @@ import {
   investigationState,
 } from "../lib/investigation_state";
 import { ensureInvestigationId, recordToolAudit } from "../lib/tool_audit";
+
+function latestUserText(messages: any[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "user") continue;
+    if (typeof message.content === "string") return message.content;
+    if (Array.isArray(message.content)) {
+      return message.content
+        .map((part: any) => (part?.type === "text" ? String(part.text ?? "") : ""))
+        .join("\n");
+    }
+  }
+  return "";
+}
+
+function explicitlyConfirmsRecovery(text: string): boolean {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  if (/yes\s*[-,:]?\s*recovery verified/i.test(normalized)) return true;
+  if (
+    /\b(not|isn't|hasn't|still active|not sure|unsure|uncertain|appears|seems|should|might|may|could)\b/i.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+  return /\b(alarm|service|connectivity|connection|device|system|issue|fault|parameter|reading)\b\s+(?:(?:has|is|are|was)\s+)?(?:now\s+)?\b(cleared|restored|recovered|resolved|normal(?:ized)?|back online|back up)\b/i.test(
+    normalized,
+  );
+}
 
 const checkSchema = z.object({
   id: z.string().min(1),
@@ -71,15 +101,50 @@ const inputSchema = z
   })
   .strict();
 
-export default defineTool({
-  description:
-    "Persist v1.13 conversational investigation progress only. Investigation IDs are runtime-owned. This changes Eve session state and never changes a network, alarm, device, configuration, or ticket.",
-  inputSchema,
-  execute: async (input) => {
+export default defineDynamic({
+  events: {
+    "step.started": async (_event, ctx) => {
+      const operatorRecoveryConfirmed = explicitlyConfirmsRecovery(
+        latestUserText(ctx.messages as any[]),
+      );
+
+      return defineTool({
+        description:
+          "Persist v1.13 conversational investigation progress only. Investigation IDs are runtime-owned. This changes Eve session state and never changes a network, alarm, device, configuration, or ticket. A resolved stage/status is rejected unless the operator's latest message explicitly confirms actual recovery.",
+        inputSchema,
+        execute: async (input) => {
     const startedAt = Date.now();
     const investigationId = ensureInvestigationId();
     const { update_reason, ...updates } = input;
     const updatedAt = new Date().toISOString();
+
+    if (
+      (updates.issue_status === "resolved" || updates.current_stage === "resolved") &&
+      !operatorRecoveryConfirmed
+    ) {
+      recordToolAudit({
+        actor: "ai-noc-investigator",
+        tool: "update_investigation_state",
+        status: "rejected_missing_operator_recovery_confirmation",
+        started_at_ms: startedAt,
+        safe_row_count: 0,
+        source_class: "internal_state",
+        freshness: "current_session",
+        privacy_state: "metadata_only_no_raw_evidence_logged",
+        investigation_id: investigationId,
+        stage: "verification",
+      });
+      return {
+        saved: false,
+        safety: "session_state_only",
+        rejection_reason:
+          "Resolved state requires explicit operator confirmation that the alarm or service actually recovered.",
+        update_reason,
+        updated_at: investigationState.get().updated_at,
+        state: investigationState.get(),
+      };
+    }
+
     investigationState.update((current) => ({
       ...current,
       ...Object.fromEntries(
@@ -108,13 +173,14 @@ export default defineTool({
       updated_at: updatedAt,
       state: investigationState.get(),
     };
-  },
-  toModelOutput(output: any) {
+        },
+        toModelOutput(output: any) {
     const state = output.state ?? {};
     return {
       type: "json" as const,
       value: {
         saved: output.saved,
+        rejection_reason: output.rejection_reason ?? null,
         update_reason: output.update_reason,
         investigation_id: state.investigation_id,
         current_stage: state.current_stage,
@@ -134,5 +200,8 @@ export default defineTool({
           : [],
       },
     };
+        },
+      });
+    },
   },
 });

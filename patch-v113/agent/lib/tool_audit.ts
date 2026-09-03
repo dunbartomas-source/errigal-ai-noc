@@ -80,6 +80,7 @@ export function recordToolAudit(input: {
   source_class: AuditSourceClass;
   freshness: string;
   privacy_state: string;
+  stage?: string | null;
   investigation_id?: string | null;
   generate_investigation_id?: boolean;
 }): ToolAuditEvent | null {
@@ -94,7 +95,7 @@ export function recordToolAudit(input: {
     const event: ToolAuditEvent = {
       timestamp: new Date().toISOString(),
       investigation_id: investigationId,
-      stage: current.current_stage ?? null,
+      stage: input.stage ?? current.current_stage ?? null,
       actor: String(input.actor).slice(0, 80),
       tool: String(input.tool).slice(0, 120),
       status: String(input.status).slice(0, 80),

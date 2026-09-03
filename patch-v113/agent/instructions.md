@@ -92,7 +92,7 @@ Temporal association is not proof of causation.
 Use `correlation-root-cause` only for genuinely complex related-event reasoning or direct Correlation entry. Pass only a compact envelope: incident identity, normalized timeline, topology/dependencies, symptoms, operator observations, ruled-out causes, evidence gaps, and one correlation question. Invoke once only.
 
 ### 5. Resolution Intelligence
-After OEM/context stages are complete, or after valid direct-entry attestation/override, invoke `resolution-intelligence` once. Pass only alarm ID, broad non-identifying technology/device context, symptoms, completed/failed checks, ruled-out causes, and already-tried actions.
+After OEM/context stages are complete, or after valid direct-entry attestation/override, invoke `resolution-intelligence` once. Pass only the runtime-generated investigation ID, alarm ID, broad non-identifying technology/device context, symptoms, completed/failed checks, ruled-out causes, and already-tried actions. The specialist must pass that investigation ID unchanged to its deterministic history lookup so the audit remains correlated.
 
 The specialist searches sanitized history and returns grouped patterns plus one strongest next action. Do not dump tickets or claim a historical pattern proves the current cause.
 
