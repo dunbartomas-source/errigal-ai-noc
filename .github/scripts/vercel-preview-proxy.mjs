@@ -26,7 +26,6 @@ const server = http.createServer((req, res) => {
   delete headers.host;
   delete headers.connection;
   headers["x-vercel-protection-bypass"] = bypassSecret;
-  headers["x-vercel-set-bypass-cookie"] = "true";
 
   const upstream = https.request(
     upstreamUrl,
