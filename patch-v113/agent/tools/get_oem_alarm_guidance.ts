@@ -24,6 +24,14 @@ function entryModeFromText(text: string) {
   return match?.[1]?.toLowerCase() ?? null;
 }
 
+function hasToolMessage(messages: any[], toolName: string): boolean {
+  return messages.some((message: any) =>
+    Array.isArray(message?.content)
+      ? message.content.some((part: any) => part?.toolName === toolName)
+      : false,
+  );
+}
+
 function oemSkillLoaded(messages: any[]): boolean {
   return messages.some((message: any) =>
     Array.isArray(message?.content)
@@ -52,13 +60,22 @@ function mergeChecklist(existing: any[], incoming: any[]) {
 export default defineDynamic({
   events: {
     "step.started": async (_event, ctx) => {
-      const text = latestUserText(ctx.messages as any[]);
+      const messages = ctx.messages as any[];
+      const text = latestUserText(messages);
       const explicitEntryMode = entryModeFromText(text);
       const state = investigationState.get();
 
+      // First-line OEM guidance is a single-fetch evidence source. Once it has
+      // returned in this investigation context, the durable state/checklist is
+      // the canonical copy and the data tool disappears from subsequent model
+      // steps. This prevents duplicate model-driven retrieval and token spend.
+      if (state.oem_guidance_loaded || hasToolMessage(messages, "get_oem_alarm_guidance")) {
+        return null;
+      }
+
       // Direct Resolution deliberately bypasses first-line OEM execution on its
-      // entry turn. If the operator later asks to go back through OEM steps, a
-      // later turn can expose this tool again after loading the OEM Skill.
+      // entry turn. If the operator later explicitly returns to a fresh OEM
+      // investigation, that should start a new investigation/session.
       if (explicitEntryMode === "resolution") return null;
       if (
         state.entry_mode === "resolution" &&
@@ -72,7 +89,7 @@ export default defineDynamic({
 
       // The OEM procedure is a Skill by design. Do not expose the underlying
       // data tool until that approved procedure has actually been loaded.
-      if (!oemSkillLoaded(ctx.messages as any[])) return null;
+      if (!oemSkillLoaded(messages)) return null;
 
       return defineTool({
         description:
