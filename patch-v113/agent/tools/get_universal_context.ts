@@ -68,7 +68,7 @@ function sortTimeline(events: any[]) {
 
 export default defineTool({
   description:
-    "Build the universal read-only incident context: current incident/device facts, recent alarm events, available software/configuration changes, topology/dependencies, related tickets, and a deterministic ordered timeline. It deliberately excludes historical resolution intelligence.",
+    "Build the universal read-only incident context from a ticket_id, network_identifier, OR alarm_identifier alone. If the user already supplied an alarm identifier, call this tool immediately; do not ask for a network ID first. Returns current incident/device facts, recent alarm events, available software/configuration changes, topology/dependencies, related tickets, an ordered timeline, and explicit evidence gaps. It deliberately excludes historical resolution intelligence.",
   inputSchema,
   execute: async (input) => {
     const tenant = input.tenant_id?.trim() || "customer-a";
