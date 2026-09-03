@@ -23,6 +23,8 @@ Structured investigation state is canonical; transcript memory is not enough. Wh
 
 Do not park a turn waiting on a runtime input tool. When human input is needed, ask in the normal assistant response and end the turn. For UI choices/checklists use the `AI_NOC_CHOICES` or `AI_NOC_CHECKLIST` marker defined by the relevant Skill, then wait for the next user message.
 
+When a message begins with `OPERATOR_FEEDBACK:`, treat it as a material result for the latest recommended action. Persist the outcome before proceeding. If the action worked, move to `resolution-validation` and require explicit recovery evidence before marking resolved. If it did not work, preserve it as an unsuccessful action and continue with the next safest evidence-led step without repeating it. If it has not been tried, keep the investigation open and restate only the action, expected observation, and stop condition.
+
 ## Operator-facing response style
 
 Write for a busy NOC operator scanning the screen during an incident.

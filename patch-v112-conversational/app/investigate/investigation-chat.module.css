@@ -912,6 +912,29 @@
   border-color: var(--cream-strong);
 }
 
+.feedbackCard {
+  border-left-color: #7694b5;
+}
+
+.feedbackCard > p {
+  margin: -5px 0 13px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.feedbackWorked {
+  color: #176843;
+  background: #edf8f2;
+  border-color: #cce7d8;
+}
+
+.feedbackFailed {
+  color: #8a3439;
+  background: #fff4f4;
+  border-color: #efd5d7;
+}
+
 .thinkingRow {
   display: flex;
   align-items: center;

@@ -438,6 +438,67 @@ function ChoiceCard({
   );
 }
 
+function shouldShowRecommendationFeedback(
+  text: string,
+  control: InvestigationControl | null,
+  stage: number,
+): boolean {
+  if (control || stage < 5) return false;
+  return /strongest next action|recommended next action|recommend(?:ed|ation).*action/i.test(
+    text,
+  );
+}
+
+function RecommendationFeedback({
+  disabled,
+  onSend,
+}: {
+  disabled: boolean;
+  onSend: (message: string) => Promise<void>;
+}) {
+  const choices = [
+    {
+      className: styles.feedbackWorked,
+      label: "Yes - issue resolved",
+      message:
+        "OPERATOR_FEEDBACK: I completed the latest recommended action and the issue appears resolved. Persist this outcome and begin explicit resolution validation; do not close the investigation until recovery is verified.",
+    },
+    {
+      className: styles.feedbackFailed,
+      label: "No - issue remains",
+      message:
+        "OPERATOR_FEEDBACK: I completed the latest recommended action but the issue remains. Persist it as an unsuccessful action and continue with the next safest evidence-led step.",
+    },
+    {
+      className: "",
+      label: "Not tried yet",
+      message:
+        "OPERATOR_FEEDBACK: I have not tried the latest recommended action yet. Keep the investigation open and restate only the action, expected observation, and stop condition.",
+    },
+  ];
+
+  return (
+    <div className={`${styles.controlCard} ${styles.feedbackCard}`}>
+      <div className={styles.controlEyebrow}>Recommendation feedback</div>
+      <h3>Did the recommended action work?</h3>
+      <p>Your answer becomes part of this investigation and determines the next step.</p>
+      <div className={styles.choiceGrid}>
+        {choices.map((choice) => (
+          <button
+            className={`${styles.choiceButton} ${choice.className}`}
+            disabled={disabled}
+            key={choice.label}
+            onClick={() => void onSend(choice.message)}
+            type="button"
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function InvestigationChat({ sessionId }: { sessionId?: string }) {
   const [history, setHistory] = useState<InvestigationHistoryEntry[]>([]);
   const { data, status, error, send, session, cancel } = useEveAgent({
@@ -735,6 +796,10 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
                 const control = message.role === "assistant" ? parseControl(rawText) : null;
                 const toolLabels = toolLabelsFromMessage(message);
                 const isLatestAssistant = message.id === latestAssistantId;
+                const showRecommendationFeedback =
+                  message.role === "assistant" &&
+                  isLatestAssistant &&
+                  shouldShowRecommendationFeedback(visibleText, control, currentStage);
 
                 return (
                   <article
@@ -779,6 +844,9 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
                           disabled={busy || !isLatestAssistant}
                           onSend={sendMessage}
                         />
+                      ) : null}
+                      {showRecommendationFeedback ? (
+                        <RecommendationFeedback disabled={busy} onSend={sendMessage} />
                       ) : null}
                     </div>
                   </article>

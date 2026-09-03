@@ -261,6 +261,9 @@ for (const marker of [
   "Download handover",
   "HISTORY_KEY",
   "investigationStage",
+  "RecommendationFeedback",
+  "Did the recommended action work?",
+  "OPERATOR_FEEDBACK:",
 ]) {
   if (!chat.includes(marker)) throw new Error(`V113_UI_MISSING ${marker}`);
 }
@@ -273,6 +276,7 @@ if (packageJson.dependencies?.ai !== "7.0.90") {
 for (const marker of [
   "Operator-facing response style",
   "Do not narrate internal actions",
+  "When a message begins with `OPERATOR_FEEDBACK:`",
   "Do not run `get_universal_context` with the same unresolved alarm identifier",
   "Continue with a network/system identifier",
   "Run demo alarm DEMO-PWR-FAIL",
