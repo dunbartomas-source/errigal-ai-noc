@@ -27,6 +27,7 @@ jobs:
     timeout-minutes: 25
     env:
       PREVIEW_URL: https://errigal-ai-noc-source-git-feature-ai-noc-5c465d-errigal-ai-noc.vercel.app
+      NO_COLOR: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,4 +68,23 @@ jobs:
           test "$ok" = "1"
 
       - name: Run strict v1.13 conversational evals
-        run: npx eve eval universal --url "$PREVIEW_URL" --strict
+        id: evals
+        shell: bash
+        run: |
+          set +e
+          npx eve eval universal --url "$PREVIEW_URL" --strict 2>&1 | tee v113-evals.log
+          status=${PIPESTATUS[0]}
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          echo ""
+          echo "=== V1.13 EVAL FAILURE SUMMARY ==="
+          grep -n -E "FAIL|Fail|failed|Assertion|Expected|Actual|multi-turn-progress|direct-resolution|direct-correlation|unknown-alarm|subagent|tool" v113-evals.log | tail -n 250 || true
+          exit "$status"
+
+      - name: Upload v1.13 eval trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v113-eval-trace
+          path: v113-evals.log
+          if-no-files-found: error
+          retention-days: 7
