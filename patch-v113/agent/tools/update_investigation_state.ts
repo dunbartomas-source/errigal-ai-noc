@@ -1,0 +1,93 @@
+import { z } from "zod";
+import { defineTool } from "eve/tools";
+import {
+  CHECK_STATUSES,
+  ENTRY_MODES,
+  INVESTIGATION_STAGES,
+  STAGE_STATUSES,
+  investigationState,
+} from "../lib/investigation_state";
+
+const checkSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+  source_field: z.string().optional(),
+  status: z.enum(CHECK_STATUSES),
+  observation: z.string().optional(),
+});
+
+const timelineSchema = z.object({
+  timestamp: z.string().nullable().optional(),
+  order_hint: z.number().nullable().optional(),
+  event_type: z.string().min(1),
+  entity: z.string().nullable().optional(),
+  description: z.string().min(1),
+  source_ref: z.string().nullable().optional(),
+});
+
+const stageStatusSchema = z.object({
+  oem_troubleshooting: z.enum(STAGE_STATUSES),
+  context_investigation: z.enum(STAGE_STATUSES),
+  correlation: z.enum(STAGE_STATUSES),
+  resolution: z.enum(STAGE_STATUSES),
+});
+
+const inputSchema = z
+  .object({
+    investigation_id: z.string().min(1).optional(),
+    entry_mode: z.enum(ENTRY_MODES).optional(),
+    current_stage: z.enum(INVESTIGATION_STAGES).optional(),
+    alarm_identifier: z.string().min(1).optional(),
+    oem: z.string().min(1).optional(),
+    trap_name: z.string().min(1).optional(),
+    alarm_description: z.string().min(1).optional(),
+    network_identifier: z.string().min(1).optional(),
+    site: z.string().min(1).optional(),
+    device: z.string().min(1).optional(),
+    current_device_status: z.string().min(1).optional(),
+    oem_guidance_loaded: z.boolean().optional(),
+    checks: z.array(checkSchema).optional(),
+    current_symptoms: z.array(z.string()).optional(),
+    operator_observations: z.array(z.string()).optional(),
+    active_alarms: z.array(z.string()).optional(),
+    recent_alarms: z.array(z.string()).optional(),
+    recent_changes: z.array(z.string()).optional(),
+    timeline: z.array(timelineSchema).optional(),
+    related_alarms: z.array(z.string()).optional(),
+    ruled_out: z.array(z.string()).optional(),
+    possible_relationships: z.array(z.string()).optional(),
+    hypotheses: z.array(z.string()).optional(),
+    stage_status: stageStatusSchema.optional(),
+    historical_evidence: z.array(z.string()).optional(),
+    recommended_action: z.string().min(1).optional(),
+    issue_status: z.enum(["unknown", "active", "recovered", "resolved", "escalated"]).optional(),
+    evidence_gaps: z.array(z.string()).optional(),
+    source_refs: z.array(z.string()).optional(),
+    update_reason: z.string().min(1),
+  })
+  .strict();
+
+export default defineTool({
+  description:
+    "Persist v1.13 conversational investigation progress only. This changes Eve session state and never changes a network, alarm, device, configuration, or ticket.",
+  inputSchema,
+  execute: async (input) => {
+    const { update_reason, ...updates } = input;
+    const updatedAt = new Date().toISOString();
+    investigationState.update((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        Object.entries(updates).filter(([, value]) => value !== undefined),
+      ),
+      updated_at: updatedAt,
+    }));
+
+    return {
+      saved: true,
+      safety: "session_state_only",
+      update_reason,
+      updated_at: updatedAt,
+      state: investigationState.get(),
+    };
+  },
+});

@@ -1,0 +1,130 @@
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { execFileSync } from "node:child_process";
+
+const release = "1.13.0";
+
+function copyFile(source, target) {
+  if (!existsSync(source)) throw new Error(`V113_PATCH_SOURCE_MISSING ${source}`);
+  const slash = target.lastIndexOf("/");
+  if (slash > 0) mkdirSync(target.slice(0, slash), { recursive: true });
+  writeFileSync(target, readFileSync(source, "utf8"));
+}
+
+// Reuse the already-built conversational UI and generic OEM-table adapter as scaffolding.
+for (const [source, target] of [
+  ["patch-v112-conversational/app/investigate/page.tsx", "app/investigate/page.tsx"],
+  ["patch-v112-conversational/app/investigate/investigation-chat.tsx", "app/investigate/investigation-chat.tsx"],
+  ["patch-v112-conversational/app/investigate/investigation-chat.module.css", "app/investigate/investigation-chat.module.css"],
+  ["patch-v112-conversational/agent/lib/oem_playbook_source.ts", "agent/lib/oem_playbook_source.ts"],
+]) {
+  copyFile(source, target);
+}
+
+const v113Paths = [
+  "agent/agent.ts",
+  "agent/instructions.md",
+  "agent/lib/investigation_state.ts",
+  "agent/lib/resolution_history_source.ts",
+  "agent/tools/agent.ts",
+  "agent/tools/get_investigation_state.ts",
+  "agent/tools/update_investigation_state.ts",
+  "agent/tools/get_oem_alarm_guidance.ts",
+  "agent/tools/get_universal_context.ts",
+  "agent/skills/oem-guided-troubleshooting.md",
+  "agent/skills/universal-context-investigation.md",
+  "agent/skills/resolution-validation.md",
+  "agent/skills/incident-handover.md",
+  "agent/subagents/correlation-root-cause/agent.ts",
+  "agent/subagents/correlation-root-cause/instructions.md",
+  "agent/subagents/resolution-intelligence/agent.ts",
+  "agent/subagents/resolution-intelligence/instructions.md",
+  "agent/subagents/resolution-intelligence/tools/search_resolution_history.ts",
+  "app/page.tsx",
+  "scripts/validate-v113-source.mjs",
+];
+
+for (const path of v113Paths) copyFile(`patch-v113/${path}`, path);
+
+// v1.13 deliberately exposes only the two specialist roles that justify isolated context.
+for (const path of [
+  "agent/subagents/incident-investigation",
+  "agent/subagents/troubleshooting-resolution",
+  "agent/subagents/network-intelligence",
+  "agent/subagents/noc-operations",
+  "agent/subagents/knowledge-learning",
+]) {
+  rmSync(path, { recursive: true, force: true });
+}
+
+// Synthetic/demo mode should also be addressable by alarm identifier, not only ticket id.
+const sourcePath = "agent/lib/copilot_source.ts";
+let source = readFileSync(sourcePath, "utf8");
+const oldSyntheticSelection = "  const selected = COPILOT_CASES[ticketId];";
+if (source.includes(oldSyntheticSelection)) {
+  source = source.replace(
+    oldSyntheticSelection,
+    `  const wantedAlarm = String(alarmIdentifier ?? ticketId).trim().toLowerCase();\n  const selected =\n    COPILOT_CASES[ticketId] ??\n    Object.values(COPILOT_CASES).find((candidate: any) =>\n      String(candidate?.incident?.alarm_identifier ?? \"\").trim().toLowerCase() === wantedAlarm,\n    );`,
+  );
+  writeFileSync(sourcePath, source);
+}
+
+// Fix procedure parsing so a sentence beginning with an uppercase letter is never stripped.
+const oemSourcePath = "agent/lib/oem_playbook_source.ts";
+let oemSource = readFileSync(oemSourcePath, "utf8");
+oemSource = oemSource.replace(
+  '.map((line) => line.replace(/^[-*\\dA-Z.)\\s]+(?=\\S)/, "").trim())',
+  '.map((line) => line.replace(/^\\s*(?:[-*•]+|\\d+[.)]|[A-Z][.)])\\s*/, "").trim())',
+);
+writeFileSync(oemSourcePath, oemSource);
+
+// Adapt the existing chat shell into the universal v1.13 entry experience.
+const chatPath = "app/investigate/investigation-chat.tsx";
+let chat = readFileSync(chatPath, "utf8");
+chat = chat.replace(
+  /const STARTERS = \[[\s\S]*?\] as const;/,
+  `const STARTERS = [\n  {\n    title: \"Full AI-NOC Investigation\",\n    description: \"Let AI-NOC guide OEM checks, network context, correlation when needed, and resolution intelligence.\",\n    prompt: \"ENTRY_MODE: full. Start a new progressive AI-NOC investigation. Ask for only the minimum incident identifier you need and follow the universal workflow.\",\n  },\n  {\n    title: \"OEM Troubleshooting\",\n    description: \"Start with the controlled OEM alarm guidance and record what has already been tried.\",\n    prompt: \"ENTRY_MODE: oem_troubleshooting. Start directly at OEM troubleshooting. Ask me for the alarm identifier if it is missing.\",\n  },\n  {\n    title: \"Investigate Network Context\",\n    description: \"Check recent alarms, system state, topology, software/config changes and missing evidence.\",\n    prompt: \"ENTRY_MODE: context_investigation. Start directly at the universal network-context investigation stage. Do not replay OEM troubleshooting unless it becomes necessary.\",\n  },\n  {\n    title: \"Correlate Alarms\",\n    description: \"Analyse timing, topology and shared dependencies only when several events may be related.\",\n    prompt: \"ENTRY_MODE: correlation. Start directly with alarm correlation. Ask for the smallest identifier set required, gather deterministic context, then use the Correlation & Root Cause Analyst once.\",\n  },\n  {\n    title: \"Find Past Resolutions\",\n    description: \"Skip completed stages and compare real resolved cases without replaying unnecessary workflows.\",\n    prompt: \"ENTRY_MODE: resolution. Start directly at Resolution Intelligence. First confirm whether OEM troubleshooting and basic network-context investigation are complete unless I already supplied that attestation.\",\n  },\n] as const;`,
+);
+chat = chat.replace(
+  /const CHECK_STATUSES = \[[\s\S]*?\] as const;/,
+  `const CHECK_STATUSES = [\n  [\"completed_resolved\", \"Completed - issue resolved\"],\n  [\"completed_unresolved\", \"Completed - issue still present\"],\n  [\"not_completed\", \"Not completed\"],\n  [\"not_applicable\", \"Not applicable\"],\n  [\"unable\", \"Unable to complete / unsure\"],\n] as const;`,
+);
+chat = chat
+  .replace("Guided Investigation", "Universal Investigation")
+  .replace("AI-NOC COPILOT", "AI-NOC INVESTIGATOR")
+  .replace("Incident investigation", "Conversational investigation")
+  .replace('"Review OEM checks"', '"OEM troubleshooting"')
+  .replace('"Narrow likely causes"', '"Investigate network context"')
+  .replace('"Compare resolved cases"', '"Correlate when needed"')
+  .replace('"Verify or escalate"', '"Resolve and verify"')
+  .replace(
+    "Give me an alarm identifier, ticket, device, or symptom. I will establish the\n                evidence, ask what you have already checked, and guide the investigation one\n                decision at a time.",
+    "Give me an alarm identifier, ticket, device, network/system identifier, or symptom. I will ask systems before humans, remember what has already been ruled out, and guide the investigation one decision at a time.",
+  );
+writeFileSync(chatPath, chat);
+
+const healthPath = "app/api/health/route.ts";
+let health = readFileSync(healthPath, "utf8");
+health = health
+  .replace(/version: \"[^\"]+\"/, 'version: "1.13.0"')
+  .replace(/eval_suite: \"[^\"]+\"/, 'eval_suite: "eve_universal_agentic_v113"');
+if (!health.includes("universal_agentic:")) {
+  health = health.replace(
+    "    data_adapter:",
+    '    universal_agentic: { active: true, primary_agent: "ai-noc-investigator", specialists: ["correlation-root-cause", "resolution-intelligence"], mode: "read_only" },\n    data_adapter:',
+  );
+}
+writeFileSync(healthPath, health);
+
+let pkg = readFileSync("package.json", "utf8");
+pkg = pkg.replace(/"version": "[^"]+"/, '"version": "1.13.0"');
+JSON.parse(pkg);
+writeFileSync("package.json", pkg);
+
+execFileSync("node", ["scripts/validate-v113-source.mjs"], { stdio: "inherit" });
+console.log(`V113_PATCH_OK release=${release} route=/ mode=read_only`);
