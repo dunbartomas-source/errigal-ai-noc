@@ -1,0 +1,76 @@
+name: V113 Capability Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ai-noc-universal-agentic-workflow
+    paths:
+      - ".github/workflows/v113-capability-audit.yml"
+      - "apply-v113.mjs"
+      - "patch-v113/agent/**"
+
+permissions:
+  contents: read
+
+jobs:
+  capability-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Reconstruct v1.13 source
+        run: |
+          node prepare-source.mjs
+          node fix-source.mjs
+          node apply-v113.mjs
+
+      - name: List active agent capability files
+        shell: bash
+        run: |
+          echo "=== ACTIVE AGENT FILES ==="
+          find agent -maxdepth 5 -type f | sort
+          echo ""
+          echo "=== ROOT TOOLS ==="
+          find agent/tools -maxdepth 1 -type f -print | sort || true
+          echo ""
+          echo "=== SKILLS ==="
+          find agent/skills -maxdepth 2 -type f -print | sort || true
+          echo ""
+          echo "=== SUBAGENTS ==="
+          find agent/subagents -maxdepth 3 -type f -print | sort || true
+          echo ""
+          echo "=== PROMPT-SURFACE TEXT SIZE ==="
+          find agent -type f \( -name '*.md' -o -name '*.ts' \) -print0 | xargs -0 wc -c | sort -n | tail -n 80
+
+      - name: Inspect Eve CLI capability view
+        shell: bash
+        run: |
+          set +e
+          echo "=== EVE VERSION ==="
+          npx eve --version
+          echo "=== EVE INFO ==="
+          npx eve info 2>&1 | tee v113-eve-info.txt
+          echo "EVE_INFO_EXIT=${PIPESTATUS[0]}"
+          echo "=== EVE HELP (if info unsupported) ==="
+          npx eve --help 2>&1 | head -n 160
+          exit 0
+
+      - name: Upload capability audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v113-capability-audit
+          path: v113-eve-info.txt
+          if-no-files-found: warn
+          retention-days: 7
