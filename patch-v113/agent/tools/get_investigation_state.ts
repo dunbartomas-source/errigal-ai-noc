@@ -1,16 +1,33 @@
 import { z } from "zod";
 import { defineTool } from "eve/tools";
 import { investigationState } from "../lib/investigation_state";
+import { ensureInvestigationId, recordToolAudit } from "../lib/tool_audit";
 
 export default defineTool({
   description:
     "Read the durable v1.13 AI-NOC investigation state for the current Eve session. Use when resuming or when the current stage/check status is unclear.",
   inputSchema: z.object({}).strict(),
-  execute: async () => ({
-    status: "success",
-    read_only: true,
-    state: investigationState.get(),
-  }),
+  execute: async () => {
+    const startedAt = Date.now();
+    const investigationId = ensureInvestigationId();
+    const state = investigationState.get();
+    recordToolAudit({
+      actor: "ai-noc-investigator",
+      tool: "get_investigation_state",
+      status: "success",
+      started_at_ms: startedAt,
+      safe_row_count: 1,
+      source_class: "internal_state",
+      freshness: "current_session",
+      privacy_state: "metadata_only_no_raw_evidence_logged",
+      investigation_id: investigationId,
+    });
+    return {
+      status: "success",
+      read_only: true,
+      state,
+    };
+  },
   toModelOutput(output: any) {
     const state = output.state ?? {};
     return {
@@ -34,7 +51,9 @@ export default defineTool({
               id: check.id,
               text: String(check.text ?? "").slice(0, 180),
               status: check.status,
-              observation: check.observation ? String(check.observation).slice(0, 180) : null,
+              observation: check.observation
+                ? String(check.observation).slice(0, 180)
+                : null,
             }))
           : [],
         current_symptoms: Array.isArray(state.current_symptoms)
@@ -53,9 +72,15 @@ export default defineTool({
           ? state.evidence_gaps.slice(0, 10)
           : [],
         evidence_counts: {
-          active_alarms: Array.isArray(state.active_alarms) ? state.active_alarms.length : 0,
-          recent_alarms: Array.isArray(state.recent_alarms) ? state.recent_alarms.length : 0,
-          recent_changes: Array.isArray(state.recent_changes) ? state.recent_changes.length : 0,
+          active_alarms: Array.isArray(state.active_alarms)
+            ? state.active_alarms.length
+            : 0,
+          recent_alarms: Array.isArray(state.recent_alarms)
+            ? state.recent_alarms.length
+            : 0,
+          recent_changes: Array.isArray(state.recent_changes)
+            ? state.recent_changes.length
+            : 0,
           timeline_events: Array.isArray(state.timeline) ? state.timeline.length : 0,
           historical_items: Array.isArray(state.historical_evidence)
             ? state.historical_evidence.length
