@@ -14,22 +14,43 @@ const requiredFiles = [
   "agent/skills/oem-guided-troubleshooting.md",
   "agent/skills/universal-context-investigation.md",
   "agent/skills/resolution-validation.md",
+  "agent/skills/incident-handover.md",
   "agent/subagents/correlation-root-cause/agent.ts",
   "agent/subagents/resolution-intelligence/agent.ts",
   "agent/subagents/resolution-intelligence/tools/search_resolution_history.ts",
   "app/page.tsx",
   "app/investigate/investigation-chat.tsx",
+  "app/api/health/route.ts",
 ];
 
 for (const path of requiredFiles) {
   if (!existsSync(path)) throw new Error(`V113_SOURCE_MISSING ${path}`);
 }
 
-for (const removed of [
+const removedCapabilities = [
   "agent/subagents/incident-investigation",
   "agent/subagents/troubleshooting-resolution",
-]) {
-  if (existsSync(removed)) throw new Error(`V113_DEPRECATED_SUBAGENT_PRESENT ${removed}`);
+  "agent/subagents/network-intelligence",
+  "agent/subagents/noc-operations",
+  "agent/subagents/knowledge-learning",
+  "agent/subagents/correlation-root-cause/tools/get_root_cause_evidence_pack.ts",
+  "agent/tools/build_guided_escalation_packet.ts",
+  "agent/tools/get_copilot_incident_evidence_pack.ts",
+  "agent/tools/get_guided_correlation_assessment.ts",
+  "agent/tools/get_guided_investigation_state.ts",
+  "agent/tools/get_local_resolution_intelligence.ts",
+  "agent/tools/get_shared_resolution_intelligence.ts",
+  "agent/tools/record_guided_investigation_outcome.ts",
+  "agent/tools/record_guided_observation.ts",
+  "agent/tools/record_investigation_checks.ts",
+  "agent/tools/start_guided_investigation.ts",
+  "agent/skills/power-fault-troubleshooting.md",
+  "agent/skills/communication-loss-troubleshooting.md",
+  "agent/lib/guided_investigation_state.ts",
+];
+
+for (const removed of removedCapabilities) {
+  if (existsSync(removed)) throw new Error(`V113_DEPRECATED_CAPABILITY_PRESENT ${removed}`);
 }
 
 const instructions = readFileSync("agent/instructions.md", "utf8");
@@ -39,6 +60,7 @@ for (const marker of [
   "resolution-intelligence",
   "Software version may matter later",
   "Use at most one specialist subagent",
+  "State persistence is mandatory",
 ]) {
   if (!instructions.includes(marker)) throw new Error(`V113_INSTRUCTION_MISSING ${marker}`);
 }
@@ -64,7 +86,20 @@ for (const prohibited of ["exec(", "acknowledgeAlarm", "closeTicket", "restartDe
   if (stateTool.includes(prohibited)) throw new Error(`V113_STATE_SAFETY_VIOLATION ${prohibited}`);
 }
 
+const health = readFileSync("app/api/health/route.ts", "utf8");
+for (const marker of [
+  'version: "1.13.0"',
+  '"correlation-root-cause"',
+  '"resolution-intelligence"',
+  "generic_agent_delegation: false",
+]) {
+  if (!health.includes(marker)) throw new Error(`V113_HEALTH_CONTRACT_MISSING ${marker}`);
+}
+for (const stale of ["incident-investigation", "troubleshooting-resolution", "knowledge-learning"]) {
+  if (health.includes(stale)) throw new Error(`V113_HEALTH_STALE_CAPABILITY ${stale}`);
+}
+
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 if (pkg.version !== "1.13.0") throw new Error(`V113_PACKAGE_VERSION ${pkg.version}`);
 
-console.log("V113_SOURCE_OK architecture=one-main-agent+skills+two-specialists mode=read_only");
+console.log("V113_SOURCE_OK architecture=one-main-agent+4-skills+2-specialists root_tools=4 mode=read_only");
