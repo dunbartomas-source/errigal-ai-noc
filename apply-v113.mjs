@@ -47,6 +47,7 @@ const v113Paths = [
   "agent/subagents/resolution-intelligence/tools/search_resolution_history.ts",
   "app/page.tsx",
   "scripts/validate-v113-source.mjs",
+  "tsconfig.json",
 ];
 
 for (const path of v113Paths) copyFile(`patch-v113/${path}`, path);
