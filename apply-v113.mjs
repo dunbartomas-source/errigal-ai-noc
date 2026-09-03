@@ -16,8 +16,8 @@ function copyFile(source, target) {
   writeFileSync(target, readFileSync(source, "utf8"));
 }
 
-// Reuse only the existing conversational shell as scaffolding. The OEM data
-// contract is v1.13-owned and is applied below rather than inherited from v1.12.
+// Reuse only the existing conversational shell as scaffolding. The data/OEM
+// contracts are v1.13-owned and applied below rather than inherited from v1.12.
 for (const [source, target] of [
   ["patch-v112-conversational/app/investigate/page.tsx", "app/investigate/page.tsx"],
   ["patch-v112-conversational/app/investigate/investigation-chat.tsx", "app/investigate/investigation-chat.tsx"],
@@ -30,6 +30,7 @@ const v113Paths = [
   "agent/agent.ts",
   "agent/instructions.md",
   "agent/lib/investigation_state.ts",
+  "agent/lib/copilot_source.ts",
   "agent/lib/oem_playbook_source.ts",
   "agent/lib/resolution_history_source.ts",
   "agent/tools/agent.ts",
@@ -80,8 +81,6 @@ for (const scope of disabledScopes) {
 }
 
 // v1.13 exposes only the capabilities required by the universal conversational architecture.
-// Legacy implementation remains in repository/source archives for reference but is removed from
-// the active Eve discovery tree so it cannot consume prompt/tool context or be invoked accidentally.
 const inactiveCapabilityPaths = [
   "agent/subagents/incident-investigation",
   "agent/subagents/troubleshooting-resolution",
@@ -106,18 +105,6 @@ const inactiveCapabilityPaths = [
 
 for (const path of inactiveCapabilityPaths) {
   rmSync(path, { recursive: true, force: true });
-}
-
-// Synthetic/demo mode should also be addressable by alarm identifier, not only ticket id.
-const sourcePath = "agent/lib/copilot_source.ts";
-let source = readFileSync(sourcePath, "utf8");
-const oldSyntheticSelection = "  const selected = COPILOT_CASES[ticketId];";
-if (source.includes(oldSyntheticSelection)) {
-  source = source.replace(
-    oldSyntheticSelection,
-    `  const wantedAlarm = String(alarmIdentifier ?? ticketId).trim().toLowerCase();\n  const selected =\n    COPILOT_CASES[ticketId] ??\n    Object.values(COPILOT_CASES).find((candidate: any) =>\n      String(candidate?.incident?.alarm_identifier ?? \"\").trim().toLowerCase() === wantedAlarm,\n    );`,
-  );
-  writeFileSync(sourcePath, source);
 }
 
 // Adapt the existing chat shell into the universal v1.13 entry experience.
