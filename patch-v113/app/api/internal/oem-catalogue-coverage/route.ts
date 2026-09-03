@@ -23,12 +23,13 @@ function dataServiceConfig() {
   return { base: base || null, token: token || null };
 }
 
+// Preserve separators and punctuation. The real table contains distinct alarms
+// such as `Temperature High` and `temperature__High`.
 function normalizeIdentifier(value: unknown): string {
   return String(value ?? "")
+    .normalize("NFKC")
     .trim()
-    .toUpperCase()
-    .replace(/[\s_]+/g, "-")
-    .replace(/-+/g, "-");
+    .toLocaleUpperCase();
 }
 
 function firstValue(row: any, keys: string[]): string {
@@ -58,6 +59,8 @@ function rowIdentifier(row: any): string {
 
 function canonicalFields(row: any) {
   return {
+    // Never use `comment` here: the real export mixes OEM-like labels and
+    // technical notes in that field. OEM is accepted only from a dedicated field.
     oem: firstValue(row, [
       "oem",
       "OEM",
@@ -65,17 +68,9 @@ function canonicalFields(row: any) {
       "Vendor",
       "manufacturer",
       "Manufacturer",
-      "comment",
-      "Comment",
     ]),
-    trap_name: firstValue(row, [
-      "trap_name",
-      "Trap Name",
-      "trap",
-      "Trap",
-      "context",
-      "Context",
-    ]),
+    context: firstValue(row, ["context", "Context"]),
+    trap_name: firstValue(row, ["trap_name", "Trap Name", "trap", "Trap"]),
     description: firstValue(row, [
       "description",
       "Description",
@@ -135,22 +130,16 @@ function distinctValues(values: string[]): string[] {
 function objectArrays(payload: any): Array<{ path: string; rows: any[] }> {
   const arrays: Array<{ path: string; rows: any[] }> = [];
   const seen = new Set<any>();
-
   function visit(value: any, path = "root") {
     if (!value || typeof value !== "object" || seen.has(value)) return;
     seen.add(value);
     if (Array.isArray(value)) {
       arrays.push({ path, rows: value });
-      for (let index = 0; index < value.length; index += 1) {
-        visit(value[index], `${path}[${index}]`);
-      }
+      value.forEach((child, index) => visit(child, `${path}[${index}]`));
       return;
     }
-    for (const [key, child] of Object.entries(value)) {
-      visit(child, `${path}.${key}`);
-    }
+    for (const [key, child] of Object.entries(value)) visit(child, `${path}.${key}`);
   }
-
   visit(payload);
   return arrays;
 }
@@ -158,51 +147,41 @@ function objectArrays(payload: any): Array<{ path: string; rows: any[] }> {
 function trapKnowledgeRows(payload: any): any[] {
   if (Array.isArray(payload?.trapKnowledge)) return payload.trapKnowledge;
   if (Array.isArray(payload?.trap_knowledge)) return payload.trap_knowledge;
-
   const candidates = objectArrays(payload)
     .filter(({ path, rows }) => {
-      const lowerPath = path.toLowerCase();
-      if (!lowerPath.includes("trap") && !lowerPath.includes("knowledge")) return false;
-      return rows.some((row) => rowIdentifier(row));
+      const lower = path.toLowerCase();
+      return (
+        (lower.includes("trap") || lower.includes("knowledge")) &&
+        rows.some((row) => rowIdentifier(row))
+      );
     })
     .sort((a, b) => b.rows.length - a.rows.length);
-
   return candidates[0]?.rows ?? [];
 }
 
-function continuationHint(payload: any): boolean {
+function hasContinuation(payload: any): boolean {
   if (!payload || typeof payload !== "object") return false;
-  const serializedKeys = Object.keys(payload).map((key) => key.toLowerCase());
-  if (
-    serializedKeys.some((key) =>
-      ["nextcursor", "next_cursor", "nextpage", "next_page", "hasmore", "has_more", "truncated"].includes(key),
-    )
-  ) {
-    const candidate =
-      payload.nextCursor ??
+  return Boolean(
+    payload.nextCursor ??
       payload.next_cursor ??
       payload.nextPage ??
       payload.next_page ??
       payload.hasMore ??
       payload.has_more ??
-      payload.truncated;
-    return Boolean(candidate);
-  }
-  return false;
+      payload.truncated,
+  );
 }
 
-async function requestLookup(params: Record<string, string>): Promise<{ status: number; payload: any }> {
+async function requestLookup(
+  params: Record<string, string>,
+): Promise<{ status: number; payload: any }> {
   const { base, token } = dataServiceConfig();
   if (!base || !token) return { status: 0, payload: null };
-
   const url = new URL(`${base}/lookup`);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   try {
     const response = await fetch(url, {
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${token}`,
-      },
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
       cache: "no-store",
     });
     const text = await response.text();
@@ -235,7 +214,7 @@ async function enumerationProbe(
     payload: result.payload,
     identifiers,
     idBearingRowCount: rows.filter((row) => rowIdentifier(row)).length,
-    continuationHint: continuationHint(result.payload),
+    continuationHint: hasContinuation(result.payload),
   };
 }
 
@@ -246,7 +225,6 @@ async function enumerateCatalogue() {
     probes.push(await enumerationProbe("wildcard_star", { identifier: "*" }, limit));
     probes.push(await enumerationProbe("wildcard_percent", { identifier: "%" }, limit));
   }
-
   const viable = probes
     .filter((probe) => probe.status >= 200 && probe.status < 300 && probe.identifiers.size > 1)
     .sort((a, b) => b.identifiers.size - a.identifiers.size || b.limit - a.limit);
@@ -257,7 +235,8 @@ async function enumerateCatalogue() {
       complete: false,
       best: null,
       probes,
-      completeness_reason: "The existing lookup contract did not expose more than one OEM alarm identifier.",
+      completeness_reason:
+        "The existing lookup contract did not expose more than one Trap Knowledge alarm identifier.",
     };
   }
 
@@ -267,7 +246,7 @@ async function enumerateCatalogue() {
   const counts = sameLabel.map((probe) => probe.identifiers.size);
   const maxCount = Math.max(...counts);
   const finalCount = counts[counts.length - 1] ?? 0;
-  const hitKnownBoundary = [250, 1000, 5000].includes(best.idBearingRowCount);
+  const hitKnownBoundary = LOOKUP_LIMITS.includes(best.idBearingRowCount as any);
   const complete =
     !best.continuationHint &&
     !hitKnownBoundary &&
@@ -286,12 +265,7 @@ async function enumerateCatalogue() {
 }
 
 async function validateIdentifier(identifier: string) {
-  const lookup = await requestLookup({
-    identifier,
-    visibility: "internal",
-    limit: "250",
-  });
-
+  const lookup = await requestLookup({ identifier, visibility: "internal", limit: "250" });
   if (lookup.status < 200 || lookup.status >= 300 || lookup.payload?.status !== "success") {
     return { kind: "lookup_failure" as const };
   }
@@ -305,7 +279,6 @@ async function validateIdentifier(identifier: string) {
 
   const rows = trapKnowledgeRows(lookup.payload);
   if (!rows.length) return { kind: "documentation_gap" as const };
-
   for (const row of rows) {
     const rowId = normalizeIdentifier(rowIdentifier(row));
     if (rowId && rowId !== identifier) return { kind: "cross_alarm_violation" as const };
@@ -314,14 +287,15 @@ async function validateIdentifier(identifier: string) {
   const extracted = rows.map(canonicalFields);
   const variants = {
     oem: distinctValues(extracted.map((row) => row.oem)),
+    context: distinctValues(extracted.map((row) => row.context)),
     trap_name: distinctValues(extracted.map((row) => row.trap_name)),
     description: distinctValues(extracted.map((row) => row.description)),
     remedy: distinctValues(extracted.map((row) => row.remedy)),
     technical_info: distinctValues(extracted.map((row) => row.technical_info)),
   };
-  const conflicts = Object.entries(variants)
-    .filter(([, values]) => values.length > 1)
-    .map(([field]) => field);
+  const conflicts = (["oem", "description", "remedy", "technical_info"] as const).filter(
+    (field) => variants[field].length > 1,
+  );
 
   if (conflicts.length) {
     return {
@@ -332,7 +306,7 @@ async function validateIdentifier(identifier: string) {
   }
 
   const hasControlledContent = extracted.some(
-    (row) => row.description || row.remedy || row.technical_info || row.trap_name,
+    (row) => row.context || row.description || row.remedy || row.technical_info || row.trap_name,
   );
   if (!hasControlledContent) return { kind: "documentation_gap" as const };
 
@@ -340,16 +314,14 @@ async function validateIdentifier(identifier: string) {
     kind: "clean_playbook" as const,
     row_count: rows.length,
     deduplicated_version_rows: Math.max(0, rows.length - 1),
+    metadata_variant_group:
+      variants.context.length > 1 || variants.trap_name.length > 1,
   };
 }
 
 async function validateUnknownIdentifier() {
   const unknown = `AI-NOC-NOT-FOUND-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const lookup = await requestLookup({
-    identifier: unknown,
-    visibility: "internal",
-    limit: "5",
-  });
+  const lookup = await requestLookup({ identifier: unknown, visibility: "internal", limit: "5" });
   if (lookup.status === 404) return true;
   if (lookup.status >= 200 && lookup.status < 300) {
     return lookup.payload?.status !== "success" || trapKnowledgeRows(lookup.payload).length === 0;
@@ -407,6 +379,7 @@ export async function GET() {
     clean_playbooks: 0,
     duplicate_version_groups: 0,
     deduplicated_version_rows: 0,
+    metadata_variant_groups: 0,
     data_conflicts: 0,
     documentation_gaps: 0,
     lookup_failures: 0,
@@ -414,13 +387,12 @@ export async function GET() {
     cross_alarm_violations: 0,
   };
 
-  // Deliberately sequential: this is a bounded read-only validation harness, not
-  // a load test against the Errigal data service.
   for (const identifier of identifiers) {
     const result = await validateIdentifier(identifier);
     if (result.kind === "clean_playbook") {
       counts.clean_playbooks += 1;
       if (result.deduplicated_version_rows > 0) counts.duplicate_version_groups += 1;
+      if (result.metadata_variant_group) counts.metadata_variant_groups += 1;
       counts.deduplicated_version_rows += result.deduplicated_version_rows;
     } else if (result.kind === "data_conflict") {
       counts.data_conflicts += 1;
@@ -456,6 +428,9 @@ export async function GET() {
     unknown_identifier_not_found: unknownIdentifierNotFound,
     software_version_filter_used: false,
     exact_normalized_identifier_matching: true,
+    identifier_normalization: "trim_nfkc_casefold_preserve_separators",
+    mixed_comment_field_used: false,
+    oem_source: "explicit_oem_field_only",
     conflict_policy: "fail_closed",
     duplicate_version_policy: "deduplicate_equivalent_guidance",
     raw_rows_returned: false,
