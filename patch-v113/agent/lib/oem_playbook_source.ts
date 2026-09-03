@@ -14,7 +14,7 @@ export type OemPlaybookStep = {
 };
 
 export type OemDataConflict = {
-  field: "oem" | "trap_name" | "description" | "remedy" | "technical_info";
+  field: "oem" | "description" | "remedy" | "technical_info";
   variants: string[];
 };
 
@@ -25,7 +25,12 @@ export type OemAlarmPlaybookResult = {
   alarm_identifier: string;
   canonical_alarm_identifier: string;
   oem: string | null;
+  source_label: string | null;
+  source_labels: string[];
+  context: string | null;
+  contexts: string[];
   trap_name: string | null;
+  trap_names: string[];
   description: string | null;
   remedy: string | null;
   technical_info: string | null;
@@ -40,9 +45,11 @@ export type OemAlarmPlaybookResult = {
   data_conflicts: OemDataConflict[];
   matching_policy: {
     alarm_identifier: "exact_normalized";
+    identifier_normalization: "trim_nfkc_casefold_preserve_separators";
     oem_derived_from_alarm_identifier: true;
     software_version_used: false;
     duplicate_version_rows: "deduplicate_equivalent_guidance";
+    metadata_variants: "retain_without_declaring_guidance_conflict";
     conflicting_guidance: "return_data_conflict";
     pilot_scope: "all_alarm_identifiers_in_oem_table";
   };
@@ -51,19 +58,29 @@ export type OemAlarmPlaybookResult = {
 
 const MATCHING_POLICY = {
   alarm_identifier: "exact_normalized" as const,
+  identifier_normalization: "trim_nfkc_casefold_preserve_separators" as const,
   oem_derived_from_alarm_identifier: true as const,
   software_version_used: false as const,
   duplicate_version_rows: "deduplicate_equivalent_guidance" as const,
+  metadata_variants: "retain_without_declaring_guidance_conflict" as const,
   conflicting_guidance: "return_data_conflict" as const,
   pilot_scope: "all_alarm_identifiers_in_oem_table" as const,
 };
 
+/**
+ * Exact identifier matching is intentionally conservative.
+ *
+ * The real Trap Knowledge table contains identifiers where spaces and underscores
+ * distinguish different alarms (for example `Temperature High` and
+ * `temperature__High`). Replacing separators with a common character would cause
+ * cross-alarm contamination, so normalization is limited to NFKC, outer trim and
+ * case folding. Internal punctuation and separators are preserved exactly.
+ */
 export function normalizeAlarmIdentifier(value: unknown): string {
   return String(value ?? "")
+    .normalize("NFKC")
     .trim()
-    .toUpperCase()
-    .replace(/[\s_]+/g, "-")
-    .replace(/-+/g, "-");
+    .toLocaleUpperCase();
 }
 
 function firstValue(row: any, keys: string[]): string {
@@ -121,7 +138,10 @@ function splitExplicitProcedure(value: string): string[] {
 }
 
 function checklistFromGuidance(remedy: string, technicalInfo: string): OemPlaybookStep[] {
-  const candidateSteps: Array<{ instruction: string; source_field: "remedy" | "technical_info" }> = [];
+  const candidateSteps: Array<{
+    instruction: string;
+    source_field: "remedy" | "technical_info";
+  }> = [];
 
   if (remedy.trim()) {
     const explicit = splitExplicitProcedure(remedy);
@@ -137,7 +157,10 @@ function checklistFromGuidance(remedy: string, technicalInfo: string): OemPlaybo
     candidateSteps.push({ instruction, source_field: "technical_info" });
   }
 
-  const deduped = new Map<string, { instruction: string; source_field: "remedy" | "technical_info" }>();
+  const deduped = new Map<
+    string,
+    { instruction: string; source_field: "remedy" | "technical_info" }
+  >();
   for (const step of candidateSteps) {
     const key = normalizeControlledText(step.instruction);
     if (!deduped.has(key)) deduped.set(key, step);
@@ -173,7 +196,12 @@ function baseResult(
     alarm_identifier: normalized,
     canonical_alarm_identifier: normalized,
     oem: null,
+    source_label: null,
+    source_labels: [],
+    context: null,
+    contexts: [],
     trap_name: null,
+    trap_names: [],
     description: null,
     remedy: null,
     technical_info: null,
@@ -208,8 +236,20 @@ function rowIdentifier(row: any): string {
 
 function canonicalFields(row: any) {
   return {
-    oem: firstValue(row, ["oem", "OEM", "vendor", "Vendor", "manufacturer", "Manufacturer", "comment", "Comment"]),
-    trap_name: firstValue(row, ["trap_name", "Trap Name", "trap", "Trap", "context", "Context"]),
+    // Do not silently label the real table's `comment` column as OEM. The
+    // uploaded data shows it behaves as a source/system-family label and needs
+    // an explicit product decision before it can be promoted to OEM identity.
+    oem: firstValue(row, [
+      "oem",
+      "OEM",
+      "vendor",
+      "Vendor",
+      "manufacturer",
+      "Manufacturer",
+    ]),
+    source_label: firstValue(row, ["comment", "Comment"]),
+    context: firstValue(row, ["context", "Context"]),
+    trap_name: firstValue(row, ["trap_name", "Trap Name", "trap", "Trap"]),
     description: firstValue(row, [
       "description",
       "Description",
@@ -259,7 +299,8 @@ export function buildOemAlarmPlaybookFromRows(
   const matchingRows = rows.filter((row) => {
     const identifier = rowIdentifier(row);
     // Endpoint responses are already identifier-scoped. If the row contains an
-    // identifier, exact normalized equality is a second no-cross-alarm guard.
+    // identifier, conservative exact normalized equality is a second
+    // no-cross-alarm guard.
     return !identifier || normalizeAlarmIdentifier(identifier) === canonical;
   });
 
@@ -273,45 +314,75 @@ export function buildOemAlarmPlaybookFromRows(
   const extracted = matchingRows.map(canonicalFields);
   const fieldVariants = {
     oem: distinctControlledValues(extracted.map((row) => row.oem)),
+    source_label: distinctControlledValues(extracted.map((row) => row.source_label)),
+    context: distinctControlledValues(extracted.map((row) => row.context)),
     trap_name: distinctControlledValues(extracted.map((row) => row.trap_name)),
     description: distinctControlledValues(extracted.map((row) => row.description)),
     remedy: distinctControlledValues(extracted.map((row) => row.remedy)),
     technical_info: distinctControlledValues(extracted.map((row) => row.technical_info)),
   };
 
+  // Only materially different controlled troubleshooting guidance fails closed.
+  // The real table contains legitimate duplicate/version rows with different
+  // trap names and other metadata, so those variants are retained as metadata
+  // rather than incorrectly declaring the alarm's guidance unusable.
   const dataConflicts: OemDataConflict[] = [];
-  for (const [field, variants] of Object.entries(fieldVariants) as Array<[
-    keyof typeof fieldVariants,
-    string[],
-  ]>) {
-    if (variants.length > 1) {
-      dataConflicts.push({ field, variants });
-    }
+  for (const field of [
+    "oem",
+    "description",
+    "remedy",
+    "technical_info",
+  ] as const) {
+    const variants = fieldVariants[field];
+    if (variants.length > 1) dataConflicts.push({ field, variants });
   }
 
   if (dataConflicts.length) {
     return baseResult(source, "data_conflict", requested, [
       ...warnings,
-      "The approved OEM table contains materially different controlled guidance for the same alarm identifier. No row was selected automatically.",
+      "The approved OEM table contains materially different controlled guidance for the same alarm identifier. No guidance row was selected automatically.",
     ], {
       canonical_alarm_identifier: canonical,
       source_row_count: matchingRows.length,
       deduplicated_row_count: 0,
       data_conflicts: dataConflicts,
+      source_labels: fieldVariants.source_label,
+      contexts: fieldVariants.context,
+      trap_names: fieldVariants.trap_name,
     });
   }
 
   const oem = fieldVariants.oem[0] ?? null;
+  const sourceLabel = fieldVariants.source_label[0] ?? null;
+  const context = fieldVariants.context[0] ?? null;
   const trapName = fieldVariants.trap_name[0] ?? null;
   const description = fieldVariants.description[0] ?? null;
   const remedy = fieldVariants.remedy[0] ?? null;
   const technicalInfo = fieldVariants.technical_info[0] ?? null;
   const checklist = checklistFromGuidance(remedy ?? "", technicalInfo ?? "");
 
+  const metadataWarnings: string[] = [];
+  if (fieldVariants.trap_name.length > 1) {
+    metadataWarnings.push(
+      `${fieldVariants.trap_name.length} trap-name variants exist for this alarm identifier; they were retained as source metadata because the controlled troubleshooting guidance is equivalent.`,
+    );
+  }
+  if (fieldVariants.context.length > 1) {
+    metadataWarnings.push(
+      `${fieldVariants.context.length} context variants exist for this alarm identifier; they were retained as source metadata.`,
+    );
+  }
+  if (fieldVariants.source_label.length > 1) {
+    metadataWarnings.push(
+      `${fieldVariants.source_label.length} source-label variants exist for this alarm identifier; they were retained as source metadata.`,
+    );
+  }
+
   return baseResult(source, "success", requested, [
     ...warnings,
+    ...metadataWarnings,
     ...(matchingRows.length > 1
-      ? [`${matchingRows.length} source rows were deduplicated into one logical OEM playbook because their controlled guidance is equivalent.`]
+      ? [`${matchingRows.length} source rows were consolidated into one logical playbook because their controlled troubleshooting guidance is equivalent.`]
       : []),
     ...(!checklist.length
       ? ["The alarm row contains controlled context but no actionable remedy/checklist step. Escalate the documentation gap rather than inventing one."]
@@ -319,12 +390,17 @@ export function buildOemAlarmPlaybookFromRows(
   ], {
     canonical_alarm_identifier: canonical,
     oem,
+    source_label: sourceLabel,
+    source_labels: fieldVariants.source_label,
+    context,
+    contexts: fieldVariants.context,
     trap_name: trapName,
+    trap_names: fieldVariants.trap_name,
     description,
     remedy,
     technical_info: technicalInfo,
     checklist,
-    alarm_context: [description, trapName].filter(Boolean) as string[],
+    alarm_context: [description, context, trapName].filter(Boolean) as string[],
     remedy_information: [remedy].filter(Boolean) as string[],
     troubleshooting_steps: checklist,
     source_row_count: matchingRows.length,
@@ -383,7 +459,8 @@ async function fromOemTable(identifier: string): Promise<OemAlarmPlaybookResult>
 function fromSyntheticCases(identifier: string): OemAlarmPlaybookResult {
   const normalized = normalizeAlarmIdentifier(identifier);
   const selected = Object.values(COPILOT_CASES).find(
-    (candidate: any) => normalizeAlarmIdentifier(candidate?.incident?.alarm_identifier) === normalized,
+    (candidate: any) =>
+      normalizeAlarmIdentifier(candidate?.incident?.alarm_identifier) === normalized,
   ) as any;
 
   if (!selected) {
@@ -400,7 +477,12 @@ function fromSyntheticCases(identifier: string): OemAlarmPlaybookResult {
     .map((row: any) => String(row?.action ?? "").trim())
     .filter(Boolean);
   const guidanceItems = guidanceRows
-    .flatMap((row: any) => [row?.technical_info, row?.guidance, row?.recommended_action, row?.resolution])
+    .flatMap((row: any) => [
+      row?.technical_info,
+      row?.guidance,
+      row?.recommended_action,
+      row?.resolution,
+    ])
     .map((value: any) => String(value ?? "").trim())
     .filter(Boolean);
   const reasonItems = plan
@@ -424,9 +506,13 @@ function fromSyntheticCases(identifier: string): OemAlarmPlaybookResult {
     technical_info: numbered([...new Set([...guidanceItems, ...reasonItems])]),
   };
 
-  return buildOemAlarmPlaybookFromRows("synthetic_demo", normalized, normalized, [row], [
-    "Synthetic demonstration guidance; live validation uses the approved OEM table.",
-  ]);
+  return buildOemAlarmPlaybookFromRows(
+    "synthetic_demo",
+    normalized,
+    normalized,
+    [row],
+    ["Synthetic demonstration guidance; live validation uses the approved OEM table."],
+  );
 }
 
 export async function getOemAlarmPlaybook(
