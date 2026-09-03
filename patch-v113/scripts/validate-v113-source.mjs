@@ -22,6 +22,8 @@ const requiredFiles = [
   "app/page.tsx",
   "app/investigate/investigation-chat.tsx",
   "app/api/health/route.ts",
+  "app/api/internal/oem-catalogue-check/route.ts",
+  "app/api/internal/oem-catalogue-coverage/route.ts",
   "patch-v113/scripts/test-oem-contract.mjs",
 ];
 
@@ -131,6 +133,37 @@ for (const marker of [
   if (!oemTool.includes(marker)) throw new Error(`V113_OEM_TOOL_CONTRACT_MISSING ${marker}`);
 }
 
+for (const routePath of [
+  "app/api/internal/oem-catalogue-check/route.ts",
+  "app/api/internal/oem-catalogue-coverage/route.ts",
+]) {
+  const route = readFileSync(routePath, "utf8");
+  for (const marker of [
+    'process.env.VERCEL_ENV === "production"',
+    "AI_NOC_DATA_SERVICE_TOKEN",
+    "raw_rows_returned: false",
+    "identifiers_returned: false",
+  ]) {
+    if (!route.includes(marker)) {
+      throw new Error(`V113_OEM_PREVIEW_ROUTE_SAFETY_MISSING ${routePath} ${marker}`);
+    }
+  }
+}
+
+const coverageRoute = readFileSync("app/api/internal/oem-catalogue-coverage/route.ts", "utf8");
+for (const marker of [
+  "model_calls: 0",
+  "software_version_filter_used: false",
+  'conflict_policy: "fail_closed"',
+  'duplicate_version_policy: "deduplicate_equivalent_guidance"',
+  "unknown_identifier_not_found",
+  "cross_alarm_violations",
+]) {
+  if (!coverageRoute.includes(marker)) {
+    throw new Error(`V113_OEM_COVERAGE_CONTRACT_MISSING ${marker}`);
+  }
+}
+
 const chat = readFileSync("app/investigate/investigation-chat.tsx", "utf8");
 for (const marker of [
   "Full AI-NOC Investigation",
@@ -169,4 +202,4 @@ execFileSync(process.execPath, ["patch-v113/scripts/test-oem-contract.mjs"], {
   stdio: "inherit",
 });
 
-console.log("V113_SOURCE_OK architecture=one-main-agent+4-skills+2-one-shot-specialists root_business_tools=4 disabled_defaults=7 oem_contract=exact+dedupe+conflict mode=read_only");
+console.log("V113_SOURCE_OK architecture=one-main-agent+4-skills+2-one-shot-specialists root_business_tools=4 disabled_defaults=7 oem_contract=exact+dedupe+conflict live_catalogue_harness=preview_only+aggregate mode=read_only");
