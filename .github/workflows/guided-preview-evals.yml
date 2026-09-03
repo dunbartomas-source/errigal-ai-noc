@@ -1,0 +1,63 @@
+name: Guided Preview Evals
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/conversational-investigation-v112
+    paths:
+      - "patch-v112.part.*"
+      - "patch-v112.manifest.json"
+      - "prepare-source.mjs"
+      - "fix-source.mjs"
+      - "package.json"
+      - ".github/workflows/guided-preview-evals.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guided-preview-evals
+  cancel-in-progress: true
+
+jobs:
+  guided-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PREVIEW_URL: https://errigal-ai-noc-source-git-feature-convers-75dba8-errigal-ai-noc.vercel.app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Reconstruct guided source
+        run: |
+          node prepare-source.mjs
+          node fix-source.mjs
+
+      - name: Wait for Vercel preview health
+        shell: bash
+        run: |
+          for attempt in $(seq 1 45); do
+            status=$(curl --silent --show-error --output /tmp/health.json --write-out "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            if [ "$status" = "200" ]; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            echo "Preview not ready yet: HTTP $status (attempt $attempt/45)"
+            sleep 10
+          done
+          echo "Preview health check did not return HTTP 200"
+          cat /tmp/health.json 2>/dev/null || true
+          exit 1
+
+      - name: Run strict guided conversational evals
+        run: npx eve eval guided --url "$PREVIEW_URL" --strict
