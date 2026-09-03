@@ -6,7 +6,7 @@ export default defineEval({
   tags: ["universal", "v113", "direct-entry", "correlation"],
   async test(t) {
     const turn = await t.send(
-      "ENTRY_MODE: correlation. Alarm identifier PWR-FAIL. I suspect PWR-FAIL, INPUT-VOLT-LOW and COMM-LOSS may be one incident. Correlate the available evidence."
+      "ENTRY_MODE: correlation. Alarm identifier DEMO-PWR-FAIL. This is the clearly labelled synthetic demo. I suspect DEMO-PWR-FAIL, INPUT-VOLT-LOW and COMM-LOSS may be one incident. Correlate the available evidence."
     );
 
     turn.succeeded();
