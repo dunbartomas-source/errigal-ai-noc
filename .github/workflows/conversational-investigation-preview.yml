@@ -1,0 +1,62 @@
+name: Conversational Investigation Preview
+
+on:
+  push:
+    branches:
+      - feature/conversational-investigation-v112
+  pull_request:
+    paths:
+      - "apply-v112.mjs"
+      - "patch-v112-conversational/**"
+      - "package.json"
+      - "vercel.json"
+      - ".github/workflows/conversational-investigation-preview.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conversational-investigation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Reconstruct existing AI-NOC source
+        run: node prepare-source.mjs
+
+      - name: Apply conversational investigation patch
+        run: node apply-v112.mjs
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build Next.js preview source
+        run: npx next build
+
+      - name: Archive validated source
+        run: |
+          tar -czf conversational-investigation-source.tgz \
+            app agent public scripts package.json package-lock.json \
+            next.config.ts tsconfig.json 2>/dev/null || \
+          tar -czf conversational-investigation-source.tgz app agent scripts package.json
+
+      - name: Upload validated source
+        uses: actions/upload-artifact@v4
+        with:
+          name: conversational-investigation-${{ github.sha }}
+          path: conversational-investigation-source.tgz
+          retention-days: 5
