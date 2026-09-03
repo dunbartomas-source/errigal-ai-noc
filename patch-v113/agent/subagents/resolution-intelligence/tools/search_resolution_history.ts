@@ -4,7 +4,7 @@ import { searchResolutionHistory } from "../../../lib/resolution_history_source"
 
 export default defineTool({
   description:
-    "Retrieve and group historical resolved incidents for an alarm identifier, marking resolution actions that resemble actions already attempted unsuccessfully. Read-only and privacy-minimised.",
+    "Retrieve anonymized historical resolution evidence for an alarm identifier. Returns aggregate fleet patterns and sanitized technical examples only; never returns cross-customer ticket IDs or identifying customer/site/device details. Marks actions that resemble actions already attempted unsuccessfully.",
   inputSchema: z
     .object({
       alarm_identifier: z.string().min(1),
