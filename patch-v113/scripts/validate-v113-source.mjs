@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 const requiredFiles = [
   "agent/agent.ts",
@@ -21,6 +22,7 @@ const requiredFiles = [
   "app/page.tsx",
   "app/investigate/investigation-chat.tsx",
   "app/api/health/route.ts",
+  "patch-v113/scripts/test-oem-contract.mjs",
 ];
 
 for (const path of requiredFiles) {
@@ -101,6 +103,34 @@ for (const specialist of [
   }
 }
 
+const oemSource = readFileSync("agent/lib/oem_playbook_source.ts", "utf8");
+for (const marker of [
+  '"data_conflict"',
+  "software_version_used: false",
+  'duplicate_version_rows: "deduplicate_equivalent_guidance"',
+  'conflicting_guidance: "return_data_conflict"',
+  "trap_name",
+  "description",
+  "remedy",
+  "technical_info",
+  "buildOemAlarmPlaybookFromRows",
+]) {
+  if (!oemSource.includes(marker)) throw new Error(`V113_OEM_CONTRACT_MISSING ${marker}`);
+}
+
+const oemTool = readFileSync("agent/tools/get_oem_alarm_guidance.ts", "utf8");
+for (const marker of [
+  "output.trap_name",
+  "output.description",
+  "output.remedy",
+  "output.technical_info",
+  "output.logical_playbook_count",
+  "output.deduplicated_row_count",
+  "output.data_conflicts",
+]) {
+  if (!oemTool.includes(marker)) throw new Error(`V113_OEM_TOOL_CONTRACT_MISSING ${marker}`);
+}
+
 const chat = readFileSync("app/investigate/investigation-chat.tsx", "utf8");
 for (const marker of [
   "Full AI-NOC Investigation",
@@ -135,4 +165,8 @@ for (const stale of ["incident-investigation", "troubleshooting-resolution", "kn
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 if (pkg.version !== "1.13.0") throw new Error(`V113_PACKAGE_VERSION ${pkg.version}`);
 
-console.log("V113_SOURCE_OK architecture=one-main-agent+4-skills+2-one-shot-specialists root_business_tools=4 disabled_defaults=7 mode=read_only");
+execFileSync(process.execPath, ["patch-v113/scripts/test-oem-contract.mjs"], {
+  stdio: "inherit",
+});
+
+console.log("V113_SOURCE_OK architecture=one-main-agent+4-skills+2-one-shot-specialists root_business_tools=4 disabled_defaults=7 oem_contract=exact+dedupe+conflict mode=read_only");
