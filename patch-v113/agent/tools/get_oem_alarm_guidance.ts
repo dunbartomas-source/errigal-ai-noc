@@ -65,17 +65,12 @@ export default defineDynamic({
       const explicitEntryMode = entryModeFromText(text);
       const state = investigationState.get();
 
-      // First-line OEM guidance is a single-fetch evidence source. Once it has
-      // returned in this investigation context, the durable state/checklist is
-      // the canonical copy and the data tool disappears from subsequent model
-      // steps. This prevents duplicate model-driven retrieval and token spend.
+      // OEM evidence is fetched once and then persisted as canonical session state.
       if (state.oem_guidance_loaded || hasToolMessage(messages, "get_oem_alarm_guidance")) {
         return null;
       }
 
-      // Direct Resolution deliberately bypasses first-line OEM execution on its
-      // entry turn. If the operator later explicitly returns to a fresh OEM
-      // investigation, that should start a new investigation/session.
+      // Direct Resolution deliberately bypasses first-line OEM execution.
       if (explicitEntryMode === "resolution") return null;
       if (
         state.entry_mode === "resolution" &&
@@ -87,20 +82,19 @@ export default defineDynamic({
         return null;
       }
 
-      // The OEM procedure is a Skill by design. Do not expose the underlying
-      // data tool until that approved procedure has actually been loaded.
+      // The deterministic lookup is exposed only inside the approved OEM Skill.
       if (!oemSkillLoaded(messages)) return null;
 
       return defineTool({
         description:
-          "Read the controlled OEM alarm guidance for one alarm identifier. Alarm identifier is the matching key; software/firmware version is intentionally not required. Never use this tool for fuzzy matching.",
+          "Read the controlled Trap_KnowledgeTable guidance for one alarm identifier. Exact normalized alarm_identifier is the matching key. Software/firmware version is intentionally not a filter. Equivalent version rows deduplicate; materially conflicting controlled guidance returns data_conflict. Never fuzzy-match.",
         inputSchema: z.object({ alarm_identifier: z.string().min(1) }).strict(),
         execute: async ({ alarm_identifier }) => {
           const result = await getOemAlarmPlaybook(alarm_identifier);
           const now = new Date().toISOString();
 
           if (result.status === "success") {
-            const incomingChecks = result.troubleshooting_steps.map((step) => ({
+            const incomingChecks = result.checklist.map((step) => ({
               id: step.id,
               text: step.instruction,
               source_field: step.source_field,
@@ -112,7 +106,8 @@ export default defineDynamic({
               alarm_identifier:
                 result.canonical_alarm_identifier || result.alarm_identifier,
               oem: result.oem ?? current.oem,
-              alarm_description: result.alarm_context[0] ?? current.alarm_description,
+              trap_name: result.trap_name ?? current.trap_name,
+              alarm_description: result.description ?? current.alarm_description,
               oem_guidance_loaded: true,
               checks: mergeChecklist(current.checks, incomingChecks),
               stage_status: {
@@ -127,16 +122,17 @@ export default defineDynamic({
               updated_at: now,
             }));
           } else {
+            const gap =
+              result.status === "data_conflict"
+                ? `Controlled OEM guidance conflict for alarm identifier ${result.canonical_alarm_identifier}. No version row was selected automatically.`
+                : `No controlled OEM guidance was available for alarm identifier ${alarm_identifier.trim()}.`;
             investigationState.update((current) => ({
               ...current,
               entry_mode: (explicitEntryMode as any) ?? current.entry_mode,
-              alarm_identifier: alarm_identifier.trim(),
-              evidence_gaps: [
-                ...new Set([
-                  ...current.evidence_gaps,
-                  `No controlled OEM guidance was available for alarm identifier ${alarm_identifier.trim()}.`,
-                ]),
-              ],
+              current_stage: "oem_troubleshooting",
+              alarm_identifier:
+                result.canonical_alarm_identifier || alarm_identifier.trim(),
+              evidence_gaps: [...new Set([...current.evidence_gaps, gap])],
               updated_at: now,
             }));
           }
@@ -144,11 +140,6 @@ export default defineDynamic({
           if (result.status !== "success") return result;
           return {
             ...result,
-            checklist: result.troubleshooting_steps.map((step) => ({
-              id: step.id,
-              text: step.instruction,
-              source_field: step.source_field,
-            })),
             evidence_class: "structured_oem_guidance",
           };
         },
@@ -159,8 +150,13 @@ export default defineDynamic({
               value: {
                 status: output.status,
                 alarm_identifier: output.alarm_identifier,
-                warnings: Array.isArray(output.warnings) ? output.warnings.slice(0, 5) : [],
+                canonical_alarm_identifier: output.canonical_alarm_identifier,
+                source_row_count: output.source_row_count ?? 0,
+                data_conflicts: Array.isArray(output.data_conflicts)
+                  ? output.data_conflicts.slice(0, 5)
+                  : [],
                 matching_policy: output.matching_policy,
+                warnings: Array.isArray(output.warnings) ? output.warnings.slice(0, 5) : [],
               },
             };
           }
@@ -173,20 +169,20 @@ export default defineDynamic({
               alarm_identifier: output.alarm_identifier,
               canonical_alarm_identifier: output.canonical_alarm_identifier,
               oem: output.oem,
-              alarm_context: Array.isArray(output.alarm_context)
-                ? output.alarm_context.slice(0, 6)
-                : [],
-              remedy_information: Array.isArray(output.remedy_information)
-                ? output.remedy_information.slice(0, 6)
-                : [],
+              trap_name: output.trap_name,
+              description: output.description,
+              remedy: output.remedy,
+              technical_info: output.technical_info,
               checklist: Array.isArray(output.checklist)
                 ? output.checklist.slice(0, 20).map((item: any) => ({
                     id: item.id,
-                    text: String(item.text ?? "").slice(0, 500),
+                    text: String(item.instruction ?? item.text ?? "").slice(0, 500),
                     source_field: item.source_field,
                   }))
                 : [],
               source_row_count: output.source_row_count,
+              logical_playbook_count: output.logical_playbook_count,
+              deduplicated_row_count: output.deduplicated_row_count,
               matching_policy: output.matching_policy,
               warnings: Array.isArray(output.warnings) ? output.warnings.slice(0, 5) : [],
             },
