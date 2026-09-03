@@ -258,6 +258,11 @@ for (const marker of [
   if (!chat.includes(marker)) throw new Error(`V113_UI_MISSING ${marker}`);
 }
 
+const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+if (packageJson.dependencies?.ai !== "7.0.90") {
+  throw new Error("V113_AI_SDK_VERSION_NOT_PINNED");
+}
+
 for (const marker of [
   "Do not run `get_universal_context` with the same unresolved alarm identifier",
   "Continue with a network/system identifier",

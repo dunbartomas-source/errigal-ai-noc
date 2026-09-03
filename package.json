@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.36",
+    "ai": "7.0.90",
     "eve": "0.47.6",
     "next": "16.3.4",
     "react": "19.2.0",

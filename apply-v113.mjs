@@ -136,6 +136,12 @@ writeFileSync(chatPath, chat);
 
 let pkg = readFileSync("package.json", "utf8");
 pkg = pkg.replace(/"version": "[^"]+"/, '"version": "1.13.0"');
+if (!pkg.includes('"ai": "7.0.90"')) {
+  pkg = pkg.replace(
+    '"@ai-sdk/deepseek": "^3.0.36",',
+    '"@ai-sdk/deepseek": "^3.0.36",\n    "ai": "7.0.90",',
+  );
+}
 JSON.parse(pkg);
 writeFileSync("package.json", pkg);
 
