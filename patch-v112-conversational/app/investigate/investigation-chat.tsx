@@ -26,6 +26,15 @@ type ChoiceControl = {
 
 type InvestigationControl = ChecklistControl | ChoiceControl;
 
+type InvestigationHistoryEntry = {
+  sessionId: string;
+  alarmIdentifier: string;
+  stage: number;
+  updatedAt: string;
+};
+
+const HISTORY_KEY = "errigal-ai-noc:investigation-history:v1";
+
 const STARTERS = [
   {
     title: "Continue a ticket",
@@ -162,6 +171,43 @@ function operatorFacingText(text: string): string {
     );
 
   return soundsLikeInternalNarration ? cleaned.slice(headingIndex).trim() : cleaned;
+}
+
+function alarmIdentifierFromMessages(messages: any[]): string {
+  for (const message of messages) {
+    const match = textFromMessage(message).match(/Alarm identifier\s+([^\s.,]+)/i);
+    if (match) return match[1];
+  }
+  return "Unidentified alarm";
+}
+
+function investigationStage(messages: any[]): number {
+  const text = messages.map(textFromMessage).join("\n").toLowerCase();
+  if (/resolution intelligence|past resolutions|historical resolution|resolution-validation|verified recovery/.test(text)) return 5;
+  if (/correlation|root cause analyst/.test(text)) return 4;
+  if (/universal context|network context|context investigation/.test(text)) return 3;
+  if (/oem|trap knowledge|approved checklist|ai_noc_checklist/.test(text)) return 2;
+  return 1;
+}
+
+function historyFromStorage(): InvestigationHistoryEntry[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(HISTORY_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is InvestigationHistoryEntry =>
+          typeof item?.sessionId === "string" &&
+          typeof item?.alarmIdentifier === "string" &&
+          Number.isInteger(item?.stage) &&
+          item.stage >= 1 &&
+          item.stage <= 5 &&
+          typeof item?.updatedAt === "string",
+      )
+      .slice(0, 8);
+  } catch {
+    return [];
+  }
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
@@ -392,13 +438,55 @@ function ChoiceCard({
   );
 }
 
-export default function InvestigationChat() {
-  const { data, status, error, send, reset, cancel } = useEveAgent();
+export default function InvestigationChat({ sessionId }: { sessionId?: string }) {
+  const [history, setHistory] = useState<InvestigationHistoryEntry[]>([]);
+  const { data, status, error, send, session, cancel } = useEveAgent({
+    initialSession: sessionId ? { sessionId, streamIndex: 0 } : undefined,
+    resume: Boolean(sessionId),
+    onSessionChange(nextSession) {
+      if (!sessionId && nextSession) {
+        History.prototype.replaceState.call(
+          window.history,
+          window.history.state,
+          "",
+          `/?session=${encodeURIComponent(nextSession.sessionId)}`,
+        );
+      }
+    },
+  });
   const messages = (data?.messages ?? []) as any[];
   const [input, setInput] = useState("");
   const [alarmInput, setAlarmInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const busy = ["submitted", "streaming", "resuming"].includes(status);
+  const activeSessionId = sessionId ?? session?.sessionId;
+  const currentAlarmIdentifier = useMemo(
+    () => alarmIdentifierFromMessages(messages),
+    [messages],
+  );
+  const currentStage = useMemo(() => investigationStage(messages), [messages]);
+
+  useEffect(() => {
+    setHistory(historyFromStorage());
+  }, []);
+
+  useEffect(() => {
+    if (!activeSessionId || messages.length === 0 || busy) return;
+    const entry: InvestigationHistoryEntry = {
+      sessionId: activeSessionId,
+      alarmIdentifier: currentAlarmIdentifier,
+      stage: currentStage,
+      updatedAt: new Date().toISOString(),
+    };
+    setHistory((current) => {
+      const next = [
+        entry,
+        ...current.filter((item) => item.sessionId !== activeSessionId),
+      ].slice(0, 8);
+      window.localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [activeSessionId, busy, currentAlarmIdentifier, currentStage, messages.length]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -437,6 +525,50 @@ export default function InvestigationChat() {
     );
   }
 
+  function downloadSummary() {
+    const exportedAt = new Date();
+    const stages = [
+      "Identify the incident",
+      "OEM troubleshooting",
+      "Investigate network context",
+      "Correlate when needed",
+      "Resolve and verify",
+    ];
+    const record = messages.flatMap((message) => {
+      const text = operatorFacingText(textFromMessage(message));
+      if (!text) return [];
+      const role = message.role === "user" ? "Operator" : "AI-NOC Copilot";
+      const cleanText = text.startsWith("ENTRY_MODE:")
+        ? `Investigation started for alarm **${currentAlarmIdentifier}**.`
+        : text;
+      return [`### ${role}\n\n${cleanText}`];
+    });
+    const summary = [
+      "# Errigal AI-NOC Incident Handover",
+      "",
+      `- **Alarm identifier:** ${currentAlarmIdentifier}`,
+      `- **Current stage:** ${currentStage} of 5 — ${stages[currentStage - 1]}`,
+      `- **Exported:** ${exportedAt.toLocaleString()}`,
+      `- **Session reference:** ${activeSessionId ?? "Not yet assigned"}`,
+      "",
+      "## Investigation record",
+      "",
+      ...record,
+      "",
+      "---",
+      "Generated by the read-only Errigal AI-NOC Investigator. Recommendations remain hypotheses until verified by an operator.",
+    ].join("\n");
+    const blob = new Blob([summary], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `errigal-ai-noc-${currentAlarmIdentifier}-${exportedAt.toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
   return (
     <main className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -450,11 +582,7 @@ export default function InvestigationChat() {
 
         <button
           className={styles.newButton}
-          onClick={() => {
-            reset();
-            setInput("");
-            setAlarmInput("");
-          }}
+          onClick={() => window.location.assign("/")}
           type="button"
         >
           <span>+</span> New investigation
@@ -469,12 +597,36 @@ export default function InvestigationChat() {
             "Compare resolved cases",
             "Verify or escalate",
           ].map((stage, index) => (
-            <div className={styles.stageItem} key={stage}>
+            <div
+              className={`${styles.stageItem} ${index + 1 === currentStage ? styles.stageActive : ""} ${index + 1 < currentStage ? styles.stageComplete : ""}`}
+              key={stage}
+            >
               <span>{index + 1}</span>
               {stage}
             </div>
           ))}
         </div>
+
+        {history.length ? (
+          <div className={styles.historyPanel}>
+            <div className={styles.sideHeading}>Recent investigations</div>
+            {history.slice(0, 4).map((item) => (
+              <button
+                className={styles.historyItem}
+                key={item.sessionId}
+                onClick={() =>
+                  window.location.assign(`/?session=${encodeURIComponent(item.sessionId)}`)
+                }
+                type="button"
+              >
+                <strong>{item.alarmIdentifier}</strong>
+                <span>
+                  Stage {item.stage} · {new Date(item.updatedAt).toLocaleDateString()}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <div className={styles.safetyCard}>
           <span className={styles.safetyDot} />
@@ -492,6 +644,11 @@ export default function InvestigationChat() {
             <h1>Incident investigation</h1>
           </div>
           <div className={styles.statusGroup}>
+            {messages.length ? (
+              <button className={styles.headerButton} onClick={downloadSummary} type="button">
+                Download handover
+              </button>
+            ) : null}
             <span className={`${styles.statusPill} ${busy ? styles.statusBusy : ""}`}>
               <span />
               {status === "streaming"

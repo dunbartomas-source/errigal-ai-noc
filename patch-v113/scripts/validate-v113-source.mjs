@@ -257,6 +257,10 @@ for (const marker of [
   "MarkdownMessage",
   "renderInlineMarkdown",
   "operatorFacingText",
+  "Recent investigations",
+  "Download handover",
+  "HISTORY_KEY",
+  "investigationStage",
 ]) {
   if (!chat.includes(marker)) throw new Error(`V113_UI_MISSING ${marker}`);
 }
