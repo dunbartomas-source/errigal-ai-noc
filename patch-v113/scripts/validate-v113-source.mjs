@@ -256,6 +256,7 @@ for (const marker of [
   "Run demo alarm",
   "MarkdownMessage",
   "renderInlineMarkdown",
+  "operatorFacingText",
 ]) {
   if (!chat.includes(marker)) throw new Error(`V113_UI_MISSING ${marker}`);
 }

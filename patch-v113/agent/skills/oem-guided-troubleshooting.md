@@ -10,6 +10,26 @@ If the result is `not_found`, do not call universal context with that same unres
 
 Treat returned `context`, `description`, `remedy`, `technical_info` and checklist items as controlled Trap Knowledge evidence. `trap_name` is source metadata and may be generic. Do not add troubleshooting steps that are not supported by the controlled evidence.
 
+## Operator display format
+
+After retrieval, show the useful result immediately. Do not mention loading this Skill, calling the lookup, or saving state. Use this compact structure:
+
+`## Alarm [identifier] — [short description]`
+
+`### What we know`
+
+- `**Context:** ...`
+- `**Description:** ...`
+- `**OEM:** ...`
+
+`### Approved checks`
+
+- `**A — [controlled check]**`
+
+`### Next action`
+
+Put the one recommended action in **bold**, followed by up to three short bullets explaining what to inspect or record. End with a single short checkpoint sentence and the required control marker. Do not repeat the same check in prose more than once.
+
 The current Trap Knowledge export has a mixed-purpose `comment` field. It is not approved as an OEM field. If `oem` is null, say the OEM identity is not confirmed from the current structured source; do not infer it from `comment` or from the alarm wording.
 
 ## Human checkpoint

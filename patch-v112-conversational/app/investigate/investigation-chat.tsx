@@ -150,6 +150,20 @@ function withoutControlMarker(text: string): string {
     .trim();
 }
 
+function operatorFacingText(text: string): string {
+  const cleaned = withoutControlMarker(text);
+  const headingIndex = cleaned.search(/^#{1,4}\s+/m);
+  if (headingIndex <= 0) return cleaned;
+
+  const preamble = cleaned.slice(0, headingIndex);
+  const soundsLikeInternalNarration =
+    /\b(let me|i(?:'ll| will) (?:start|load|persist|invoke)|i have the skill|now (?:let me|i)|the lookup returned|state persisted|per the skill)\b/i.test(
+      preamble,
+    );
+
+  return soundsLikeInternalNarration ? cleaned.slice(headingIndex).trim() : cleaned;
+}
+
 function renderInlineMarkdown(text: string): ReactNode[] {
   return text
     .split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
@@ -560,7 +574,7 @@ export default function InvestigationChat() {
             <div className={styles.messageList}>
               {messages.map((message) => {
                 const rawText = textFromMessage(message);
-                const visibleText = withoutControlMarker(rawText);
+                const visibleText = operatorFacingText(rawText);
                 const control = message.role === "assistant" ? parseControl(rawText) : null;
                 const toolLabels = toolLabelsFromMessage(message);
                 const isLatestAssistant = message.id === latestAssistantId;
