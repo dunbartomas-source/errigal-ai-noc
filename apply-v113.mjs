@@ -49,6 +49,7 @@ const v113Paths = [
   "app/page.tsx",
   "app/api/health/route.ts",
   "app/api/internal/oem-catalogue-check/route.ts",
+  "app/api/internal/oem-catalogue-coverage/route.ts",
   "scripts/validate-v113-source.mjs",
   "tsconfig.json",
 ];
