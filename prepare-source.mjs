@@ -1,26 +1,240 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-const sourceCommit = "955b60e9fd6622cf899cb41d88873139477b75db";
-const base = `https://raw.githubusercontent.com/dunbartomas-source/errigal-ai-noc/${sourceCommit}`;
-async function fetchText(path) { const response = await fetch(`${base}/${path}`); if (!response.ok) throw new Error(`GitHub ${response.status} fetching ${path}`); return await response.text(); }
-async function applyVerifiedTextPatch(prefix, paths, expectedHash) { const contents=[]; for (const path of paths) contents.push({path,content:await fetchText(`${prefix}/${path}`)}); const hash=createHash("sha256"); for (const {path,content} of contents){hash.update(path);hash.update("\0");hash.update(content);hash.update("\0");} const actual=hash.digest("hex"); if(actual!==expectedHash) throw new Error(`PATCH_CHECKSUM_FAILED prefix=${prefix} expected=${expectedHash} actual=${actual}`); for(const {path,content} of contents){const slash=path.lastIndexOf("/"); if(slash>0) mkdirSync(path.slice(0,slash),{recursive:true}); writeFileSync(path,content);} return actual; }
-const parts=Array.from({length:9},(_,i)=>`source-v14.part.${String(i).padStart(2,"0")}`); const chunks=[]; for(const part of parts) chunks.push((await fetchText(part)).trim()); const archive=Buffer.from(chunks.join(""),"base64"); const expectedBase="d7e2258ac64365cc77f4437f49b15afda127129f1e1a6bd1a46a6d0588fe0938"; const actualBase=createHash("sha256").update(archive).digest("hex"); if(actualBase!==expectedBase) throw new Error(`SOURCE_CHECKSUM_FAILED expected=${expectedBase} actual=${actualBase}`); writeFileSync("source-v14.tgz",archive); execFileSync("tar",["-xzf","source-v14.tgz"],{stdio:"inherit"});
-const v15Patch=await applyVerifiedTextPatch("patch-v15",["agent/instructions.md","agent/subagents/incident-investigation/instructions.md","agent/subagents/correlation-root-cause/instructions.md","agent/subagents/troubleshooting-resolution/instructions.md"],"87a717ffb2967526710bd8e77eb23940bdeb02e4ce9075e4478419862b61413d");
-const v16Patch=await applyVerifiedTextPatch("patch-v16",["agent/agent.ts","agent/instructions.md","agent/tools/get_copilot_incident_evidence_pack.ts"],"36a8528dde44f7b61c7f4c7680e9770463d3f90854457701a3c59362d84db950");
-const v17Patch=await applyVerifiedTextPatch("patch-v17",["evals/evals.config.ts","evals/copilot/happy-path.eval.ts","evals/copilot/privacy-boundary.eval.ts","evals/copilot/safety-boundary.eval.ts","evals/copilot/not-found.eval.ts","evals/README.md"],"3e58f29eaf86ae1efc829d6cceb7d3260d62b1f54bc93bcf825a455478c6ffba");
-const v18Patch=await applyVerifiedTextPatch("patch-v18",["agent/lib/copilot_cases.ts","agent/tools/get_copilot_incident_evidence_pack.ts","evals/copilot/incident-matrix.eval.ts","evals/README.md"],"2399798b1461ff2c94f19bf2020c2b570bad406009e319b308016ef34c1cafc6");
-const v19Patch=await applyVerifiedTextPatch("patch-v19",["agent/instructions.md","agent/skills/power-fault-troubleshooting/SKILL.md","agent/skills/communication-loss-troubleshooting/SKILL.md","evals/copilot/happy-path.eval.ts","evals/copilot/incident-matrix.eval.ts","evals/README.md"],"12785d52cf30f88c7e1910de6f11e84e35742af9f735afe775bf7d4ddbdcbb74");
-const v19bPatch=await applyVerifiedTextPatch("patch-v19b",["evals/copilot/happy-path.eval.ts","evals/copilot/incident-matrix.eval.ts"],"15614051ab8a625537870eb321d1bed91bc7bcadae13ec2d1068d0f4578613af");
-rmSync("agent/skills/power-fault-troubleshooting", { recursive: true, force: true }); rmSync("agent/skills/communication-loss-troubleshooting", { recursive: true, force: true });
-const v19cPatch=await applyVerifiedTextPatch("patch-v19c",["agent/skills/power-fault-troubleshooting.md","agent/skills/communication-loss-troubleshooting.md"],"5886bdedc0369eebafcd7c098c5af7162fd262b22d5a0034f910bf7dc81a9594");
-const v19dPatch=await applyVerifiedTextPatch("patch-v19d",["evals/copilot/happy-path.eval.ts","evals/copilot/incident-matrix.eval.ts"],"f08b9699c45efb36ef2ae897b3da45756a19134c94906e9f1d17e98c08c3b80e");
-const v110Patch=await applyVerifiedTextPatch("patch-v110",["agent/data/copilot-source.ts","agent/tools/get_copilot_incident_evidence_pack.ts","evals/copilot/data-source.eval.ts"],"147ed96ff3b522536a78933d0b8a02b35d6e73aec06e4b9e554bfc7d3e382428");
-rmSync("agent/data", { recursive: true, force: true });
-const v110bPatch=await applyVerifiedTextPatch("patch-v110b",["agent/lib/copilot_source.ts","agent/tools/get_copilot_incident_evidence_pack.ts"],"4e7122942f31c37896abd4a69ac6ddd39e1c6174083c3e8d8f5e78f828c7f1fa");
-const pagePath="app/page.tsx"; let page=readFileSync(pagePath,"utf8"); const copilotPrompt='    const prompt = `Run the end-to-end AI-NOC Copilot workflow for tenant ${tenant.trim()} and ticket ${ticket.trim()}. Call get_copilot_incident_evidence_pack exactly once. After the pack succeeds, load at most one applicable Eve troubleshooting skill: power-fault-troubleshooting for power/feed/PSU evidence or communication-loss-troubleshooting for communication/link/path evidence; if neither clearly matches, load no skill. Treat the skill as procedure only, never as incident evidence. Do not delegate to any subagent and do not independently re-query after the pack succeeds. Use Incident Summary, Correlation & Likely Root Cause, Evidence That Matters, Recommended Troubleshooting & Resolution, Escalation / Closure Criteria, and Confidence, Freshness & Gaps. Keep it concise, distinguish local evidence from anonymized Errigal-wide evidence and OEM guidance, treat correlation/root-cause rankings as hypotheses rather than proof, and execute nothing.`;'; page=page.replace(/    const prompt = `Run an end-to-end AI-NOC Copilot incident workflow[\s\S]*?`;/,copilotPrompt); writeFileSync(pagePath,page);
-const healthPath="app/api/health/route.ts"; let health=readFileSync(healthPath,"utf8"); health=health.replace(/version: "[^"]+"/,'version: "1.10.0"').replace(/eval_suite: "[^"]+"/,'eval_suite: "eve_copilot_regression_v4_data_adapter"'); if(!health.includes("skills:")) health=health.replace('    synthetic_incident_cases: 6,','    synthetic_incident_cases: 6,\n    skills: ["power-fault-troubleshooting", "communication-loss-troubleshooting"],'); if(!health.includes("data_adapter:")) health=health.replace('    skills: ["power-fault-troubleshooting", "communication-loss-troubleshooting"],','    skills: ["power-fault-troubleshooting", "communication-loss-troubleshooting"],\n    data_adapter: { active: process.env.AI_NOC_DATA_SOURCE ?? "synthetic", mode: "read_only", keystats_configured: false },'); writeFileSync(healthPath,health);
-let pkg=readFileSync("package.json","utf8"); pkg=pkg.replace(/"version": "[^"]+"/,'"version": "1.10.0"'); JSON.parse(pkg); writeFileSync("package.json",pkg); console.log("PACKAGE_JSON_OK");
 
-const v111Patch=await applyVerifiedTextPatch("patch-v111",["agent/lib/copilot_source.ts","agent/tools/get_copilot_incident_evidence_pack.ts"],"b83f2b363774ed5a31ab7674b71bc38ab1bfeb4c45f1ca2f8e3b09cf13726263");
-console.log(`SOURCE_OK source_commit=${sourceCommit} base_sha256=${actualBase} v19_patch_sha256=${v19Patch} v19b_patch_sha256=${v19bPatch} v19c_patch_sha256=${v19cPatch} v19d_patch_sha256=${v19dPatch} v110_patch_sha256=${v110Patch} v110b_patch_sha256=${v110bPatch} release=v1.10.0`);
+const sourceCommit = "9709384bd0b5250e60f861d185580ab4ba0878d7";
+const base = `https://raw.githubusercontent.com/dunbartomas-source/errigal-ai-noc/${sourceCommit}`;
+
+async function fetchText(path) {
+  const response = await fetch(`${base}/${path}`);
+  if (!response.ok) throw new Error(`GitHub ${response.status} fetching ${path}`);
+  return await response.text();
+}
+
+async function applyVerifiedTextPatch(prefix, paths, expectedHash) {
+  const contents = [];
+  for (const path of paths) {
+    contents.push({ path, content: await fetchText(`${prefix}/${path}`) });
+  }
+
+  const hash = createHash("sha256");
+  for (const { path, content } of contents) {
+    hash.update(path);
+    hash.update("\0");
+    hash.update(content);
+    hash.update("\0");
+  }
+
+  const actual = hash.digest("hex");
+  if (actual !== expectedHash) {
+    throw new Error(
+      `PATCH_CHECKSUM_FAILED prefix=${prefix} expected=${expectedHash} actual=${actual}`,
+    );
+  }
+
+  for (const { path, content } of contents) {
+    const slash = path.lastIndexOf("/");
+    if (slash > 0) mkdirSync(path.slice(0, slash), { recursive: true });
+    writeFileSync(path, content);
+  }
+
+  return actual;
+}
+
+async function applyVerifiedBase64Archive(paths, expectedHash, outputPath) {
+  const chunks = [];
+  for (const path of paths) chunks.push((await fetchText(path)).trim());
+
+  const archive = Buffer.from(chunks.join(""), "base64");
+  const actual = createHash("sha256").update(archive).digest("hex");
+  if (actual !== expectedHash) {
+    throw new Error(
+      `ARCHIVE_CHECKSUM_FAILED expected=${expectedHash} actual=${actual}`,
+    );
+  }
+
+  writeFileSync(outputPath, archive);
+  execFileSync("tar", ["-xzf", outputPath], { stdio: "inherit" });
+  return actual;
+}
+
+const parts = Array.from(
+  { length: 9 },
+  (_, index) => `source-v14.part.${String(index).padStart(2, "0")}`,
+);
+const chunks = [];
+for (const part of parts) chunks.push((await fetchText(part)).trim());
+const archive = Buffer.from(chunks.join(""), "base64");
+const expectedBase = "d7e2258ac64365cc77f4437f49b15afda127129f1e1a6bd1a46a6d0588fe0938";
+const actualBase = createHash("sha256").update(archive).digest("hex");
+if (actualBase !== expectedBase) {
+  throw new Error(
+    `SOURCE_CHECKSUM_FAILED expected=${expectedBase} actual=${actualBase}`,
+  );
+}
+writeFileSync("source-v14.tgz", archive);
+execFileSync("tar", ["-xzf", "source-v14.tgz"], { stdio: "inherit" });
+
+const v15Patch = await applyVerifiedTextPatch(
+  "patch-v15",
+  [
+    "agent/instructions.md",
+    "agent/subagents/incident-investigation/instructions.md",
+    "agent/subagents/correlation-root-cause/instructions.md",
+    "agent/subagents/troubleshooting-resolution/instructions.md",
+  ],
+  "87a717ffb2967526710bd8e77eb23940bdeb02e4ce9075e4478419862b61413d",
+);
+const v16Patch = await applyVerifiedTextPatch(
+  "patch-v16",
+  [
+    "agent/agent.ts",
+    "agent/instructions.md",
+    "agent/tools/get_copilot_incident_evidence_pack.ts",
+  ],
+  "36a8528dde44f7b61c7f4c7680e9770463d3f90854457701a3c59362d84db950",
+);
+const v17Patch = await applyVerifiedTextPatch(
+  "patch-v17",
+  [
+    "evals/evals.config.ts",
+    "evals/copilot/happy-path.eval.ts",
+    "evals/copilot/privacy-boundary.eval.ts",
+    "evals/copilot/safety-boundary.eval.ts",
+    "evals/copilot/not-found.eval.ts",
+    "evals/README.md",
+  ],
+  "3e58f29eaf86ae1efc829d6cceb7d3260d62b1f54bc93bcf825a455478c6ffba",
+);
+const v18Patch = await applyVerifiedTextPatch(
+  "patch-v18",
+  [
+    "agent/lib/copilot_cases.ts",
+    "agent/tools/get_copilot_incident_evidence_pack.ts",
+    "evals/copilot/incident-matrix.eval.ts",
+    "evals/README.md",
+  ],
+  "2399798b1461ff2c94f19bf2020c2b570bad406009e319b308016ef34c1cafc6",
+);
+const v19Patch = await applyVerifiedTextPatch(
+  "patch-v19",
+  [
+    "agent/instructions.md",
+    "agent/skills/power-fault-troubleshooting/SKILL.md",
+    "agent/skills/communication-loss-troubleshooting/SKILL.md",
+    "evals/copilot/happy-path.eval.ts",
+    "evals/copilot/incident-matrix.eval.ts",
+    "evals/README.md",
+  ],
+  "12785d52cf30f88c7e1910de6f11e84e35742af9f735afe775bf7d4ddbdcbb74",
+);
+const v19bPatch = await applyVerifiedTextPatch(
+  "patch-v19b",
+  [
+    "evals/copilot/happy-path.eval.ts",
+    "evals/copilot/incident-matrix.eval.ts",
+  ],
+  "15614051ab8a625537870eb321d1bed91bc7bcadae13ec2d1068d0f4578613af",
+);
+rmSync("agent/skills/power-fault-troubleshooting", {
+  recursive: true,
+  force: true,
+});
+rmSync("agent/skills/communication-loss-troubleshooting", {
+  recursive: true,
+  force: true,
+});
+const v19cPatch = await applyVerifiedTextPatch(
+  "patch-v19c",
+  [
+    "agent/skills/power-fault-troubleshooting.md",
+    "agent/skills/communication-loss-troubleshooting.md",
+  ],
+  "5886bdedc0369eebafcd7c098c5af7162fd262b22d5a0034f910bf7dc81a9594",
+);
+const v19dPatch = await applyVerifiedTextPatch(
+  "patch-v19d",
+  [
+    "evals/copilot/happy-path.eval.ts",
+    "evals/copilot/incident-matrix.eval.ts",
+  ],
+  "f08b9699c45efb36ef2ae897b3da45756a19134c94906e9f1d17e98c08c3b80e",
+);
+const v110Patch = await applyVerifiedTextPatch(
+  "patch-v110",
+  [
+    "agent/data/copilot-source.ts",
+    "agent/tools/get_copilot_incident_evidence_pack.ts",
+    "evals/copilot/data-source.eval.ts",
+  ],
+  "147ed96ff3b522536a78933d0b8a02b35d6e73aec06e4b9e554bfc7d3e382428",
+);
+rmSync("agent/data", { recursive: true, force: true });
+const v110bPatch = await applyVerifiedTextPatch(
+  "patch-v110b",
+  [
+    "agent/lib/copilot_source.ts",
+    "agent/tools/get_copilot_incident_evidence_pack.ts",
+  ],
+  "4e7122942f31c37896abd4a69ac6ddd39e1c6174083c3e8d8f5e78f828c7f1fa",
+);
+
+const pagePath = "app/page.tsx";
+let page = readFileSync(pagePath, "utf8");
+const copilotPrompt =
+  '    const prompt = `Run the end-to-end AI-NOC Copilot workflow for tenant ${tenant.trim()} and ticket ${ticket.trim()}. Call get_copilot_incident_evidence_pack exactly once. After the pack succeeds, load at most one applicable Eve troubleshooting skill: power-fault-troubleshooting for power/feed/PSU evidence or communication-loss-troubleshooting for communication/link/path evidence; if neither clearly matches, load no skill. Treat the skill as procedure only, never as incident evidence. Do not delegate to any subagent and do not independently re-query after the pack succeeds. Use Incident Summary, Correlation & Likely Root Cause, Evidence That Matters, Recommended Troubleshooting & Resolution, Escalation / Closure Criteria, and Confidence, Freshness & Gaps. Keep it concise, distinguish local evidence from anonymized Errigal-wide evidence and OEM guidance, treat correlation/root-cause rankings as hypotheses rather than proof, and execute nothing.`;';
+page = page.replace(
+  /    const prompt = `Run an end-to-end AI-NOC Copilot incident workflow[\s\S]*?`;/,
+  copilotPrompt,
+);
+writeFileSync(pagePath, page);
+
+const healthPath = "app/api/health/route.ts";
+let health = readFileSync(healthPath, "utf8");
+health = health
+  .replace(/version: "[^"]+"/, 'version: "1.10.0"')
+  .replace(
+    /eval_suite: "[^"]+"/,
+    'eval_suite: "eve_copilot_regression_v4_data_adapter"',
+  );
+if (!health.includes("skills:")) {
+  health = health.replace(
+    "    synthetic_incident_cases: 6,",
+    '    synthetic_incident_cases: 6,\n    skills: ["power-fault-troubleshooting", "communication-loss-troubleshooting"],',
+  );
+}
+if (!health.includes("data_adapter:")) {
+  health = health.replace(
+    '    skills: ["power-fault-troubleshooting", "communication-loss-troubleshooting"],',
+    '    skills: ["power-fault-troubleshooting", "communication-loss-troubleshooting"],\n    data_adapter: { active: process.env.AI_NOC_DATA_SOURCE ?? "synthetic", mode: "read_only", keystats_configured: false },',
+  );
+}
+writeFileSync(healthPath, health);
+
+let pkg = readFileSync("package.json", "utf8");
+pkg = pkg.replace(/"version": "[^"]+"/, '"version": "1.10.0"');
+JSON.parse(pkg);
+writeFileSync("package.json", pkg);
+console.log("PACKAGE_JSON_OK");
+
+const v111Patch = await applyVerifiedTextPatch(
+  "patch-v111",
+  [
+    "agent/lib/copilot_source.ts",
+    "agent/tools/get_copilot_incident_evidence_pack.ts",
+  ],
+  "b83f2b363774ed5a31ab7674b71bc38ab1bfeb4c45f1ca2f8e3b09cf13726263",
+);
+
+const v112Archive = await applyVerifiedBase64Archive(
+  Array.from(
+    { length: 6 },
+    (_, index) => `patch-v112.part.${String(index).padStart(2, "0")}`,
+  ),
+  "7c94e056f8c150f771b3918d33ef4ea14547fa3fb38e2841eb70c2a360dd95a5",
+  "patch-v112.tgz",
+);
+
+console.log(
+  `SOURCE_OK source_commit=${sourceCommit} base_sha256=${actualBase} v15_patch_sha256=${v15Patch} v16_patch_sha256=${v16Patch} v17_patch_sha256=${v17Patch} v18_patch_sha256=${v18Patch} v19_patch_sha256=${v19Patch} v19b_patch_sha256=${v19bPatch} v19c_patch_sha256=${v19cPatch} v19d_patch_sha256=${v19dPatch} v110_patch_sha256=${v110Patch} v110b_patch_sha256=${v110bPatch} v111_patch_sha256=${v111Patch} v112_archive_sha256=${v112Archive} release=v1.12.0`,
+);
