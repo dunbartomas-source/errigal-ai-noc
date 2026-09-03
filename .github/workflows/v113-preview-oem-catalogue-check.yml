@@ -1,0 +1,88 @@
+name: V113 Preview OEM Catalogue Check
+
+on:
+  push:
+    branches:
+      - feature/ai-noc-universal-agentic-workflow
+    paths:
+      - "patch-v113/app/api/internal/oem-catalogue-check/route.ts"
+      - "apply-v113.mjs"
+      - ".github/workflows/v113-preview-oem-catalogue-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalogue-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      PREVIEW_URL: https://errigal-ai-noc-source-git-feature-ai-noc-5c465d-errigal-ai-noc.vercel.app
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+    steps:
+      - name: Verify bypass secret
+        shell: bash
+        run: |
+          test -n "$VERCEL_AUTOMATION_BYPASS_SECRET"
+
+      - name: Wait for v1.13 Preview
+        shell: bash
+        run: |
+          ok=0
+          for attempt in $(seq 1 36); do
+            status=$(curl --silent --show-error --location \
+              --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+              --output /tmp/v113-health.json \
+              --write-out "%{http_code}" \
+              "$PREVIEW_URL/api/health" || true)
+            if [ "$status" = "200" ] \
+              && grep -q '"version":"1.13.0"' /tmp/v113-health.json; then
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          test "$ok" = "1"
+
+      - name: Check authenticated OEM catalogue capability
+        shell: bash
+        run: |
+          status=$(curl --silent --show-error --location \
+            --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+            --output /tmp/oem-catalogue-check.json \
+            --write-out "%{http_code}" \
+            "$PREVIEW_URL/api/internal/oem-catalogue-check")
+          echo "OEM_CATALOGUE_PREVIEW_HTTP=$status"
+          if [ "$status" != "200" ]; then
+            cat /tmp/oem-catalogue-check.json
+            exit 1
+          fi
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const result = JSON.parse(fs.readFileSync('/tmp/oem-catalogue-check.json', 'utf8'));
+          console.log(JSON.stringify({
+            status: result.status,
+            preview_only: result.preview_only,
+            configured: result.configured,
+            authenticated: result.authenticated,
+            enumeration_available: result.enumeration_available,
+            enumeration_source: result.enumeration_source,
+            distinct_identifier_count: result.distinct_identifier_count,
+            probes: Array.isArray(result.probes) ? result.probes.map((p) => ({
+              label: p.label,
+              status: p.status,
+              configured: p.configured,
+              json: p.json,
+              top_level_keys: p.top_level_keys,
+              array_paths: p.array_paths,
+              array_count: p.array_count,
+              object_row_count: p.object_row_count,
+              distinct_identifier_count: p.distinct_identifier_count,
+              request_error: p.request_error,
+            })) : [],
+            raw_rows_returned: result.raw_rows_returned,
+            identifiers_returned: result.identifiers_returned,
+          }, null, 2));
+          if (!result.authenticated) process.exitCode = 2;
+          NODE
