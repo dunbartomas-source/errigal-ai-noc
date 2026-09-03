@@ -23,7 +23,14 @@ function compile(sourcePath, targetName) {
 }
 
 try {
-  compile("agent/lib/copilot_cases.ts", "copilot_cases.js");
+  // The contract tests exercise the exported pure row builder. The production
+  // module also imports synthetic demo fixtures for preview conversations; stub
+  // that unrelated dependency so this no-model test does not pull in the demo stack.
+  writeFileSync(
+    join(tempDir, "copilot_cases.js"),
+    '"use strict"; Object.defineProperty(exports, "__esModule", { value: true }); exports.COPILOT_CASES = {};\n',
+    "utf8",
+  );
   compile("agent/lib/oem_playbook_source.ts", "oem_playbook_source.js");
 
   const {
