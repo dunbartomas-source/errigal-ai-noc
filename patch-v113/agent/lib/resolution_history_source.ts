@@ -20,9 +20,13 @@ function escapeRegExp(value: string): string {
 
 function sensitiveRowValues(row: any): string[] {
   const keys = [
+    "_source_ticket_id",
+    "_source_change_id",
     "ticket_id",
     "ticket",
     "case_id",
+    "change_id",
+    "change",
     "customer",
     "customer_name",
     "tenant",
@@ -56,12 +60,15 @@ function sensitiveRowValues(row: any): string[] {
     .sort((a, b) => b.length - a.length);
 }
 
-function sanitizeHistoricalText(
-  value: unknown,
-  row: any,
-): { text: string | null; redactions: number } {
+type SanitizedText = {
+  text: string | null;
+  redactions: number;
+  omitted_reason: string | null;
+};
+
+function sanitizeHistoricalText(value: unknown, row: any): SanitizedText {
   let text = String(value ?? "").trim();
-  if (!text) return { text: null, redactions: 0 };
+  if (!text) return { text: null, redactions: 0, omitted_reason: null };
 
   let redactions = 0;
   const replace = (pattern: RegExp, replacement = "[redacted]") => {
@@ -73,11 +80,10 @@ function sanitizeHistoricalText(
 
   // Remove exact identifying values available on the source row first.
   for (const sensitiveValue of sensitiveRowValues(row)) {
-    const pattern = new RegExp(escapeRegExp(sensitiveValue), "gi");
-    replace(pattern);
+    replace(new RegExp(escapeRegExp(sensitiveValue), "gi"));
   }
 
-  // Then remove common identifiers that can appear only inside free-text notes.
+  // Remove common identifiers that can appear only inside free text.
   replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi);
   replace(/\b(?:https?:\/\/|www\.)\S+\b/gi);
   replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g);
@@ -86,6 +92,9 @@ function sanitizeHistoricalText(
   replace(/\b[A-Z]{1,6}-\d{3,}\b/g);
   replace(/\b(?:SN|S\/N|SERIAL)[:#\s-]*[A-Z0-9-]{4,}\b/gi);
   replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g);
+  // The uploaded Resolution table uses six-digit numeric ticket/change IDs.
+  // Standalone 5+ digit references are therefore redacted conservatively.
+  replace(/\b\d{5,}\b/g);
 
   text = text
     .replace(/(?:\[redacted\]\s*){2,}/g, "[redacted] ")
@@ -93,13 +102,166 @@ function sanitizeHistoricalText(
     .trim();
 
   if (!text || text === "[redacted]") {
-    return { text: null, redactions };
+    return {
+      text: null,
+      redactions,
+      omitted_reason: "empty_after_redaction",
+    };
   }
 
-  // Keep notes compact so they provide technical context without leaking a raw ticket narrative.
-  if (text.length > 600) text = `${text.slice(0, 597).trim()}...`;
+  return { text, redactions, omitted_reason: null };
+}
 
-  return { text, redactions };
+const SAFE_TITLE_WORDS = new Set(
+  [
+    "Replaced",
+    "Repaired",
+    "Reboot",
+    "Rebooted",
+    "Restored",
+    "Cleared",
+    "Reset",
+    "Reseated",
+    "Checked",
+    "Check",
+    "Confirmed",
+    "Verified",
+    "Resolved",
+    "Synced",
+    "Updated",
+    "Upgraded",
+    "Removed",
+    "Installed",
+    "Restarted",
+    "Power",
+    "Carrier",
+    "Commercial",
+    "Fiber",
+    "Fibre",
+    "Backhaul",
+    "Hardware",
+    "Software",
+    "Alarm",
+    "Alarms",
+    "Module",
+    "Remote",
+    "Unit",
+    "System",
+    "Link",
+    "Port",
+    "Optical",
+    "Cable",
+    "Connector",
+    "Supply",
+    "Input",
+    "Output",
+    "Temperature",
+    "Normal",
+    "Online",
+    "Offline",
+    "Battery",
+    "Failed",
+    "Failure",
+    "Fault",
+    "Issue",
+    "Work",
+    "Completed",
+    "Prior",
+    "Investigation",
+    "Service",
+    "Signal",
+    "Reading",
+    "Current",
+    "Voltage",
+    "Network",
+    "Device",
+    "Node",
+    "Equipment",
+    "Maintenance",
+    "Config",
+    "Configuration",
+    "Firmware",
+  ].map((value) => value.toLowerCase()),
+);
+
+const SAFE_ACRONYMS = new Set([
+  "CPI",
+  "EMS",
+  "HVAC",
+  "RF",
+  "PSU",
+  "UPS",
+  "DAS",
+  "RRU",
+  "RU",
+  "BBU",
+  "BTS",
+  "PIM",
+  "VSWR",
+  "LTE",
+  "NR",
+  "5G",
+  "4G",
+  "CBRS",
+  "SFP",
+  "ODU",
+  "IDU",
+  "ALC",
+  "DL",
+  "UL",
+  "NF",
+  "ICP",
+]);
+
+function conservativeNoteRisk(text: string): string | null {
+  if (text.length > 600) return "note_too_long";
+
+  // These phrases often introduce customer/site/person identity. Omit the whole
+  // note instead of guessing which following words are sensitive.
+  if (
+    /\b(customer|client|site|location|building|hotel|school|hospital|airport|venue|engineer|contact|assigned|assignee|address|street|road|avenue|city|county|store|branch|office)\b/i.test(
+      text,
+    )
+  ) {
+    return "possible_identity_context";
+  }
+
+  // Mixed alpha-numeric host/site codes are high-risk unless already redacted.
+  if (/\b[A-Za-z]{2,}[-_][A-Za-z0-9_-]*\d+[A-Za-z0-9_-]*\b/.test(text)) {
+    return "possible_host_or_site_code";
+  }
+
+  // Reject unknown ALL-CAPS tokens: they are frequently device/site/customer
+  // abbreviations in NOC notes. Known technical acronyms remain allowed.
+  const acronyms = text.match(/\b[A-Z]{2,10}\b/g) ?? [];
+  for (const token of acronyms) {
+    if (!SAFE_ACRONYMS.has(token)) return "unknown_uppercase_identifier";
+  }
+
+  // Reject unknown Title Case words. This is deliberately conservative: notes
+  // that might contain a person's, customer's or site's proper name are omitted.
+  const titleWords = text.match(/\b[A-Z][a-z]{2,}\b/g) ?? [];
+  for (const token of titleWords) {
+    if (!SAFE_TITLE_WORDS.has(token.toLowerCase())) {
+      return "possible_proper_name";
+    }
+  }
+
+  return null;
+}
+
+function sanitizeHistoricalNote(value: unknown, row: any): SanitizedText {
+  const sanitized = sanitizeHistoricalText(value, row);
+  if (!sanitized.text) return sanitized;
+  const risk = conservativeNoteRisk(sanitized.text);
+  if (risk) {
+    return {
+      text: null,
+      redactions: sanitized.redactions,
+      omitted_reason: risk,
+    };
+  }
+  return sanitized;
 }
 
 function resemblesAlreadyTried(action: string, alreadyTried: string[]): boolean {
@@ -121,10 +283,7 @@ export async function searchResolutionHistory(input: {
 }) {
   const alarm = input.alarm_identifier.trim();
   const tenant = input.tenant_id?.trim() || "customer-a";
-  const lookup =
-    input.ticket_id?.trim() ||
-    input.network_identifier?.trim() ||
-    alarm;
+  const lookup = input.ticket_id?.trim() || input.network_identifier?.trim() || alarm;
   const result = await getCopilotIncidentCase(tenant, lookup, alarm);
 
   if (result.status !== "success" || !result.case_data) {
@@ -147,8 +306,8 @@ export async function searchResolutionHistory(input: {
     ? data.resolution_evidence.local_history
     : [];
 
-  // Source identifiers may be required internally to retrieve evidence, but case-level
-  // output is sanitized here BEFORE it reaches the Resolution Intelligence model.
+  // All case-level output is constructed from sanitized fields here, before it
+  // can reach the Resolution Intelligence model.
   const anonymizedExamples = localRows.slice(0, 25).map((row: any) => {
     const rawAction = firstValue(
       row,
@@ -185,8 +344,9 @@ export async function searchResolutionHistory(input: {
     const causeResult = sanitizeHistoricalText(rawRootCause, row);
     const outcomeResult = sanitizeHistoricalText(rawOutcome, row);
     const technologyResult = sanitizeHistoricalText(rawTechnology, row);
-    const noteResult = sanitizeHistoricalText(rawNote, row);
-    const action = actionResult.text || "Historical resolution action withheld after sanitization";
+    const noteResult = sanitizeHistoricalNote(rawNote, row);
+    const action =
+      actionResult.text || "Historical resolution action withheld after sanitization";
 
     return {
       root_cause: causeResult.text || "Unknown",
@@ -199,8 +359,11 @@ export async function searchResolutionHistory(input: {
           ? "included_with_redactions"
           : "included_sanitized"
         : rawNote
-          ? "omitted_after_sanitization"
+          ? noteResult.omitted_reason
+            ? "omitted_privacy_risk"
+            : "omitted_after_sanitization"
           : "not_available",
+      note_omission_reason: noteResult.text ? null : noteResult.omitted_reason,
       already_tried_match: resemblesAlreadyTried(action, alreadyTried),
       evidence_class: "anonymized_historical_resolution",
     };
@@ -274,6 +437,7 @@ export async function searchResolutionHistory(input: {
     already_tried_actions: alreadyTried,
     redacted_fields: [
       "ticket_id",
+      "change_id",
       "customer_identity",
       "site_name",
       "unique_device_name",
@@ -291,8 +455,8 @@ export async function searchResolutionHistory(input: {
     ],
     warnings: [
       ...(result.warnings ?? []),
-      "Cross-customer resolution evidence is anonymized. Ticket IDs and customer-identifying details are never returned to the Resolution Intelligence model or operator.",
-      "Sanitized historical notes may be shown when they retain useful technical context; raw notes are never returned.",
+      "Cross-customer resolution evidence is anonymized. Ticket/change IDs and customer-identifying details are never returned to Resolution Intelligence or the operator.",
+      "Historical notes are included only when deterministic sanitization considers them safe; uncertain notes are omitted rather than guessed safe.",
       "Historical similarity is evidence, not proof of the current root cause.",
     ],
   };
