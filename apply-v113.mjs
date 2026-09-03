@@ -48,6 +48,7 @@ const v113Paths = [
   "agent/subagents/resolution-intelligence/tools/search_resolution_history.ts",
   "app/page.tsx",
   "app/api/health/route.ts",
+  "app/api/internal/oem-catalogue-check/route.ts",
   "scripts/validate-v113-source.mjs",
   "tsconfig.json",
 ];
