@@ -43,10 +43,11 @@ export async function searchResolutionHistory(input: {
     return {
       status: result.status,
       read_only: true,
+      privacy: "anonymized_no_ticket_ids",
       alarm_identifier: alarm,
-      local_case_count: 0,
+      comparable_case_count: 0,
       global_sample_count: 0,
-      local_cases: [],
+      anonymized_examples: [],
       patterns: [],
       warnings: result.warnings,
     };
@@ -58,40 +59,56 @@ export async function searchResolutionHistory(input: {
     ? data.resolution_evidence.local_history
     : [];
 
-  const localCases = localRows.slice(0, 25).map((row: any, index: number) => {
+  // The adapter may need ticket/customer identifiers internally to retrieve evidence,
+  // but they are deliberately removed here before any historical case reaches a model.
+  const anonymizedExamples = localRows.slice(0, 25).map((row: any) => {
     const action = firstValue(
       row,
-      ["action_taken", "resolution", "Resolution", "resolution_summary", "notes"],
+      ["action_taken", "resolution", "Resolution", "resolution_summary"],
       "Historical resolution available",
     );
     return {
-      case_ref:
-        result.source === "synthetic"
-          ? firstValue(row, ["ticket_id", "ticket"], `demo-case-${index + 1}`)
-          : `internal-resolution-${index + 1}`,
       root_cause: firstValue(row, ["root_cause", "Root Cause"]),
       action,
-      outcome: firstValue(row, ["resolution_outcome", "outcome"], "Resolved historically"),
+      outcome: firstValue(
+        row,
+        ["resolution_outcome", "outcome"],
+        "Resolved historically",
+      ),
+      technology_type: firstValue(
+        row,
+        ["technology_type", "technology", "Technology"],
+        "Unknown",
+      ),
       already_tried_match: resemblesAlreadyTried(action, alreadyTried),
-      evidence_class: "historical_resolution",
+      evidence_class: "anonymized_historical_resolution",
     };
   });
 
-  const grouped = new Map<string, { action: string; support_count: number; already_tried_match: boolean }>();
-  for (const item of localCases) {
+  const grouped = new Map<
+    string,
+    { action: string; support_count: number; already_tried_match: boolean }
+  >();
+
+  for (const item of anonymizedExamples) {
     const key = normalize(item.action);
     const current = grouped.get(key);
     grouped.set(key, {
       action: item.action,
       support_count: (current?.support_count ?? 0) + 1,
-      already_tried_match: item.already_tried_match || current?.already_tried_match || false,
+      already_tried_match:
+        item.already_tried_match || current?.already_tried_match || false,
     });
   }
 
   const global = data?.resolution_evidence?.global_patterns ?? {};
   const globalPatterns = Array.isArray(global?.patterns) ? global.patterns : [];
   for (const row of globalPatterns) {
-    const action = firstValue(row, ["common_action", "action", "resolution"], "");
+    const action = firstValue(
+      row,
+      ["common_action", "action", "resolution"],
+      "",
+    );
     if (!action) continue;
     const key = normalize(action);
     const current = grouped.get(key);
@@ -99,7 +116,9 @@ export async function searchResolutionHistory(input: {
       action,
       support_count: (current?.support_count ?? 0) + Number(row?.count ?? 0),
       already_tried_match:
-        resemblesAlreadyTried(action, alreadyTried) || current?.already_tried_match || false,
+        resemblesAlreadyTried(action, alreadyTried) ||
+        current?.already_tried_match ||
+        false,
     });
   }
 
@@ -110,18 +129,41 @@ export async function searchResolutionHistory(input: {
     return b.support_count - a.support_count;
   });
 
+  const totalSupport = patterns.reduce(
+    (sum, pattern) => sum + pattern.support_count,
+    0,
+  );
+
   return {
     status: "success",
     read_only: true,
+    privacy: "anonymized_no_ticket_ids",
     alarm_identifier: alarm,
     source: result.source,
-    local_case_count: localCases.length,
+    comparable_case_count: anonymizedExamples.length,
     global_sample_count: Number(global?.sample_count ?? 0),
-    local_cases: localCases,
-    patterns: patterns.slice(0, 12),
+    anonymized_examples: anonymizedExamples,
+    patterns: patterns.slice(0, 12).map((pattern) => ({
+      ...pattern,
+      support_share:
+        totalSupport > 0
+          ? Number((pattern.support_count / totalSupport).toFixed(3))
+          : null,
+    })),
     already_tried_actions: alreadyTried,
+    redacted_fields: [
+      "ticket_id",
+      "customer_identity",
+      "site_name",
+      "unique_device_name",
+      "ip_address",
+      "serial_number",
+      "engineer_identity",
+      "raw_notes",
+    ],
     warnings: [
       ...(result.warnings ?? []),
+      "Cross-customer resolution evidence is anonymized. Ticket IDs and customer-identifying details are never returned to the model or operator.",
       "Historical similarity is evidence, not proof of the current root cause.",
     ],
   };
