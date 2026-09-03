@@ -67,12 +67,24 @@ jobs:
           done
           test "$ok" = "1"
 
+      - name: Resolve immutable Vercel preview URL
+        shell: bash
+        run: |
+          eval_url=$(curl --silent --show-error --location --output /dev/null --write-out "%{url_effective}" "$PREVIEW_URL/")
+          if [ -z "$eval_url" ]; then
+            echo "Could not resolve immutable preview URL" >&2
+            exit 1
+          fi
+          eval_url=${eval_url%/}
+          echo "Resolved Eve eval URL: $eval_url"
+          echo "EVAL_URL=$eval_url" >> "$GITHUB_ENV"
+
       - name: Run strict v1.13 conversational evals
         id: evals
         shell: bash
         run: |
           set +e
-          npx eve eval universal --url "$PREVIEW_URL" --strict 2>&1 | tee v113-evals.log
+          npx eve eval universal --url "$EVAL_URL" --strict 2>&1 | tee v113-evals.log
           status=${PIPESTATUS[0]}
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           echo ""
