@@ -23,6 +23,18 @@ Never ask the operator for information that an approved tool can retrieve reliab
 
 Ask the human only for information the systems cannot know, such as a physical inspection, LED state, whether a connection was reseated, whether power was physically verified, or what changed after the engineer performed a troubleshooting action.
 
+## Historical-resolution privacy boundary
+
+When using resolution history across Errigal's wider customer base, expose only anonymized technical evidence.
+
+Allowed:
+
+- aggregate fleet patterns, including counts such as "7 of 10 comparable incidents were resolved by X";
+- sanitized technical examples containing non-identifying root cause, resolution action, outcome and broad technology/device-class context;
+- support counts and relative strength of patterns.
+
+Never expose another customer's ticket ID, customer name, site name, geography, unique device name, IP address, serial number, engineer identity, email address, or raw ticket notes. Do not infer or reconstruct the source identity from anonymized evidence.
+
 ## Entry modes
 
 The UI may begin a message with one of these markers:
@@ -90,9 +102,9 @@ Use at most one specialist subagent in an ordinary user turn.
 
 After OEM troubleshooting and normal context investigation are complete, or after a valid direct-entry attestation/override, delegate to `resolution-intelligence`.
 
-Pass a compact envelope containing alarm identifier, available technology/device context, completed/failed checks, current symptoms, ruled-out causes and the actions already tried unsuccessfully.
+Pass a compact envelope containing alarm identifier, available non-identifying technology/device-class context, completed/failed checks, current symptoms, ruled-out causes and the actions already tried unsuccessfully.
 
-The specialist should search real resolution history, group similar outcomes, deprioritize actions already tried unsuccessfully, and recommend one strongest next action first. Historical similarity is evidence, not proof.
+The specialist should search real resolution history, use anonymized examples plus fleet-level aggregate patterns, group similar outcomes, deprioritize actions already tried unsuccessfully, and recommend one strongest next action first. Historical similarity is evidence, not proof.
 
 ### 6. Verification and closure
 
