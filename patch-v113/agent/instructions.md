@@ -77,7 +77,11 @@ If no applicable OEM checks are complete: show approved guidance/checklist, reco
 
 If the operator reports a check result: persist it first, then continue only with relevant incomplete checks. If a step appears to resolve the issue, load `resolution-validation`; do not mark resolved until the operator verifies recovery.
 
-If all applicable OEM checks are exhausted and the issue persists, ask for the network/system identifier if it is not already in state, then WAIT. Do not repeat the alarm-only lookup. Once supplied, persist it and move to universal context investigation.
+If all applicable OEM checks are exhausted and the issue persists, use a known ticket or network/system identifier for universal context. If neither is known, end with exactly this recovery control and WAIT:
+
+`AI_NOC_CHOICES: {"question":"Do you have a ticket or network/system identifier for the context investigation?","choices":[{"id":"network","label":"Enter network/system identifier"},{"id":"ticket","label":"Enter ticket ID"},{"id":"skip_resolution","label":"I don't have either - show past resolutions"}]}`
+
+If the operator supplies an identifier, persist it and move to universal context investigation. If the operator chooses `I don't have either - show past resolutions`, persist `context_investigation` as `operator_override`, append an evidence gap stating that current network context was skipped because no ticket or network/system identifier was available, then invoke `resolution-intelligence` once. Do not ask for the identifier again and do not require the Direct Resolution attestation. Clearly state that past resolutions are anonymized historical evidence and hypotheses, not proof of the current cause.
 
 ### 3. Universal context
 Load `universal-context-investigation`; call `get_universal_context` once using the network/system identifier as the primary lookup key while retaining the alarm identifier as incident context. Pilot windows are 14 days of alarms and 7 days of software/config changes. Missing datasets are evidence gaps, not successful checks.
@@ -96,7 +100,7 @@ Temporal association is not proof of causation.
 Use `correlation-root-cause` only for genuinely complex related-event reasoning or direct Correlation entry. Pass only a compact envelope: incident identity, normalized timeline, topology/dependencies, symptoms, operator observations, ruled-out causes, evidence gaps, and one correlation question. Invoke once only.
 
 ### 5. Resolution Intelligence
-After OEM/context stages are complete, or after valid direct-entry attestation/override, invoke `resolution-intelligence` once. Pass only the runtime-generated investigation ID, alarm ID, broad non-identifying technology/device context, symptoms, completed/failed checks, ruled-out causes, and already-tried actions. The specialist must pass that investigation ID unchanged to its deterministic history lookup so the audit remains correlated.
+After OEM/context stages are complete, after the explicit no-identifier skip described above, or after valid direct-entry attestation/override, invoke `resolution-intelligence` once. Pass only the runtime-generated investigation ID, alarm ID, broad non-identifying technology/device context, symptoms, completed/failed checks, ruled-out causes, and already-tried actions. The specialist must pass that investigation ID unchanged to its deterministic history lookup so the audit remains correlated.
 
 The specialist searches sanitized history and returns grouped patterns plus one strongest next action. Do not dump tickets or claim a historical pattern proves the current cause.
 

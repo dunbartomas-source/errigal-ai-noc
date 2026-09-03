@@ -25,7 +25,7 @@
 - Sanitize historical resolution evidence deterministically before model access. Never expose cross-customer identifiers or raw notes; omit uncertain notes.
 - Audit only bounded metadata. Never audit raw evidence, prompts, customer/device/ticket identifiers, or notes.
 - Missing data is an evidence gap, not evidence that nothing happened.
-- The MVP starts with an exact alarm identifier and OEM checklist. After the checklist is exhausted, collect the network/system identifier before current-context lookup.
+- The MVP starts with an exact alarm identifier and the same operator-status OEM checklist for live and demo alarms. After the checklist is exhausted, collect a ticket or network/system identifier before current-context lookup; if neither is available, allow an explicit skip to anonymized Resolution Intelligence and record current context as an evidence gap.
 - `DEMO-PWR-FAIL` is the guaranteed walkthrough path. It is synthetic, must remain clearly labelled, and is disabled when `VERCEL_ENV=production` unless explicitly enabled.
 
 ## Validation

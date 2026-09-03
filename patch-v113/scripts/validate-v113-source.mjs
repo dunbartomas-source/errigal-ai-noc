@@ -262,7 +262,9 @@ for (const marker of [
   "Do not run `get_universal_context` with the same unresolved alarm identifier",
   "Continue with a network/system identifier",
   "Run demo alarm DEMO-PWR-FAIL",
-  "ask for the network/system identifier",
+  "I don't have either - show past resolutions",
+  "current network context was skipped because no ticket or network/system identifier was available",
+  "do not require the Direct Resolution attestation",
 ]) {
   if (!instructions.includes(marker)) {
     throw new Error(`V113_ALARM_FIRST_WORKFLOW_MISSING ${marker}`);

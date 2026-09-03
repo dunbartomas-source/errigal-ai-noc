@@ -14,7 +14,7 @@ The current Trap Knowledge export has a mixed-purpose `comment` field. It is not
 
 ## Human checkpoint
 
-Ask what has already been completed. If two or more checklist items exist, end the assistant response with exactly one valid single-line marker:
+Ask what has already been completed. Whenever one or more checklist items exist, end the assistant response with exactly one valid single-line marker so live alarms use the same dropdown workflow as the demo:
 
 `AI_NOC_CHECKLIST: {"question":"Which approved OEM checks have you already completed, and what happened?","items":[{"id":"A","label":"First controlled OEM step"},{"id":"B","label":"Second controlled OEM step"}]}`
 
@@ -38,4 +38,8 @@ If some checks are complete, do not repeat them; continue with the next relevant
 
 If a check resolves the problem, move to `resolution-validation`.
 
-If all applicable checks are complete and the issue remains, mark OEM troubleshooting complete. In the full workflow, ask for the network/system identifier when it is not already known and wait for the operator before moving to `universal-context-investigation`.
+If all applicable checks are complete and the issue remains, mark OEM troubleshooting complete. In the full workflow, use a known ticket or network/system identifier for `universal-context-investigation`. If neither is known, end with exactly this marker and wait:
+
+`AI_NOC_CHOICES: {"question":"Do you have a ticket or network/system identifier for the context investigation?","choices":[{"id":"network","label":"Enter network/system identifier"},{"id":"ticket","label":"Enter ticket ID"},{"id":"skip_resolution","label":"I don't have either - show past resolutions"}]}`
+
+If the operator selects the no-identifier option, persist `context_investigation` as `operator_override`, record the missing current-context evidence, and continue directly to `resolution-intelligence` once. Do not ask for the identifier again. Present historical resolutions as anonymized evidence and hypotheses, never as proof.
