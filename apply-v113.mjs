@@ -46,20 +46,48 @@ const v113Paths = [
   "agent/subagents/resolution-intelligence/instructions.md",
   "agent/subagents/resolution-intelligence/tools/search_resolution_history.ts",
   "app/page.tsx",
+  "app/api/health/route.ts",
   "scripts/validate-v113-source.mjs",
   "tsconfig.json",
 ];
 
 for (const path of v113Paths) copyFile(`patch-v113/${path}`, path);
 
-// v1.13 deliberately exposes only the two specialist roles that justify isolated context.
-for (const path of [
+// v1.13 exposes only the capabilities required by the universal conversational architecture.
+// Legacy implementation remains in repository/source archives for reference but is removed from
+// the active Eve discovery tree so it cannot consume prompt/tool context or be invoked accidentally.
+const inactiveCapabilityPaths = [
+  // Legacy specialist roles replaced by the main Investigator + Skills.
   "agent/subagents/incident-investigation",
   "agent/subagents/troubleshooting-resolution",
   "agent/subagents/network-intelligence",
   "agent/subagents/noc-operations",
   "agent/subagents/knowledge-learning",
-]) {
+
+  // Legacy correlation evidence-pack tool; v1.13 correlation receives a compact parent handoff.
+  "agent/subagents/correlation-root-cause/tools/get_root_cause_evidence_pack.ts",
+
+  // Legacy guided-orchestrator root tools replaced by the v1.13 progressive tool set.
+  "agent/tools/build_guided_escalation_packet.ts",
+  "agent/tools/get_copilot_incident_evidence_pack.ts",
+  "agent/tools/get_guided_correlation_assessment.ts",
+  "agent/tools/get_guided_investigation_state.ts",
+  "agent/tools/get_local_resolution_intelligence.ts",
+  "agent/tools/get_shared_resolution_intelligence.ts",
+  "agent/tools/record_guided_investigation_outcome.ts",
+  "agent/tools/record_guided_observation.ts",
+  "agent/tools/record_investigation_checks.ts",
+  "agent/tools/start_guided_investigation.ts",
+
+  // Alarm-specific Skills are retained in source history but not active in the generic all-alarm pilot.
+  "agent/skills/power-fault-troubleshooting.md",
+  "agent/skills/communication-loss-troubleshooting.md",
+
+  // State implementation used only by the removed legacy guided tools.
+  "agent/lib/guided_investigation_state.ts",
+];
+
+for (const path of inactiveCapabilityPaths) {
   rmSync(path, { recursive: true, force: true });
 }
 
@@ -108,19 +136,6 @@ chat = chat
     "Give me an alarm identifier, ticket, device, network/system identifier, or symptom. I will ask systems before humans, remember what has already been ruled out, and guide the investigation one decision at a time.",
   );
 writeFileSync(chatPath, chat);
-
-const healthPath = "app/api/health/route.ts";
-let health = readFileSync(healthPath, "utf8");
-health = health
-  .replace(/version: \"[^\"]+\"/, 'version: "1.13.0"')
-  .replace(/eval_suite: \"[^\"]+\"/, 'eval_suite: "eve_universal_agentic_v113"');
-if (!health.includes("universal_agentic:")) {
-  health = health.replace(
-    "    data_adapter:",
-    '    universal_agentic: { active: true, primary_agent: "ai-noc-investigator", specialists: ["correlation-root-cause", "resolution-intelligence"], mode: "read_only" },\n    data_adapter:',
-  );
-}
-writeFileSync(healthPath, health);
 
 let pkg = readFileSync("package.json", "utf8");
 pkg = pkg.replace(/"version": "[^"]+"/, '"version": "1.13.0"');
