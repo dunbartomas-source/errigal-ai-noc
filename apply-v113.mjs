@@ -16,12 +16,12 @@ function copyFile(source, target) {
   writeFileSync(target, readFileSync(source, "utf8"));
 }
 
-// Reuse the already-built conversational UI and generic OEM-table adapter as scaffolding.
+// Reuse only the existing conversational shell as scaffolding. The OEM data
+// contract is v1.13-owned and is applied below rather than inherited from v1.12.
 for (const [source, target] of [
   ["patch-v112-conversational/app/investigate/page.tsx", "app/investigate/page.tsx"],
   ["patch-v112-conversational/app/investigate/investigation-chat.tsx", "app/investigate/investigation-chat.tsx"],
   ["patch-v112-conversational/app/investigate/investigation-chat.module.css", "app/investigate/investigation-chat.module.css"],
-  ["patch-v112-conversational/agent/lib/oem_playbook_source.ts", "agent/lib/oem_playbook_source.ts"],
 ]) {
   copyFile(source, target);
 }
@@ -30,6 +30,7 @@ const v113Paths = [
   "agent/agent.ts",
   "agent/instructions.md",
   "agent/lib/investigation_state.ts",
+  "agent/lib/oem_playbook_source.ts",
   "agent/lib/resolution_history_source.ts",
   "agent/tools/agent.ts",
   "agent/tools/get_investigation_state.ts",
@@ -116,15 +117,6 @@ if (source.includes(oldSyntheticSelection)) {
   );
   writeFileSync(sourcePath, source);
 }
-
-// Fix procedure parsing so a sentence beginning with an uppercase letter is never stripped.
-const oemSourcePath = "agent/lib/oem_playbook_source.ts";
-let oemSource = readFileSync(oemSourcePath, "utf8");
-oemSource = oemSource.replace(
-  '.map((line) => line.replace(/^[-*\\dA-Z.)\\s]+(?=\\S)/, "").trim())',
-  '.map((line) => line.replace(/^\\s*(?:[-*•]+|\\d+[.)]|[A-Z][.)])\\s*/, "").trim())',
-);
-writeFileSync(oemSourcePath, oemSource);
 
 // Adapt the existing chat shell into the universal v1.13 entry experience.
 const chatPath = "app/investigate/investigation-chat.tsx";
