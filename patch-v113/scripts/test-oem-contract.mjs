@@ -38,12 +38,21 @@ try {
     normalizeAlarmIdentifier,
   } = require(join(tempDir, "oem_playbook_source.js"));
 
-  assert.equal(normalizeAlarmIdentifier("  alm_100  "), "ALM-100");
+  // Exact matching is case-insensitive but preserves meaningful separators.
+  assert.equal(normalizeAlarmIdentifier("  alm_100  "), "ALM_100");
+  assert.equal(normalizeAlarmIdentifier("Temperature High"), "TEMPERATURE HIGH");
+  assert.equal(normalizeAlarmIdentifier("temperature__High"), "TEMPERATURE__HIGH");
+  assert.notEqual(
+    normalizeAlarmIdentifier("Temperature High"),
+    normalizeAlarmIdentifier("temperature__High"),
+  );
 
   const baseRow = {
     alarm_identifier: "ALM_100",
     oem: "Corning",
-    trap_name: "Input Power High",
+    comment: "IONM",
+    context: "Input Power High Alarm",
+    trap_name: "alarmTrap",
     description: "Input power exceeded the configured alarm threshold.",
     remedy: "1. Check the input power level.\n2. Confirm attenuation is within the approved range.",
     technical_info: "Monitor the alarm state after the approved checks are completed.",
@@ -62,23 +71,45 @@ try {
     [baseRow, duplicateVersionRow],
   );
   assert.equal(deduped.status, "success");
-  assert.equal(deduped.canonical_alarm_identifier, "ALM-100");
+  assert.equal(deduped.canonical_alarm_identifier, "ALM_100");
   assert.equal(deduped.source_row_count, 2);
   assert.equal(deduped.logical_playbook_count, 1);
   assert.equal(deduped.deduplicated_row_count, 1);
   assert.equal(deduped.matching_policy.software_version_used, false);
+  assert.equal(deduped.matching_policy.identifier_normalization, "trim_nfkc_casefold_preserve_separators");
   assert.equal(deduped.oem, "Corning");
-  assert.equal(deduped.trap_name, "Input Power High");
+  assert.equal(deduped.source_label, "IONM");
+  assert.equal(deduped.context, "Input Power High Alarm");
+  assert.equal(deduped.trap_name, "alarmTrap");
   assert.equal(deduped.description, baseRow.description);
   assert.equal(deduped.remedy, baseRow.remedy);
   assert.equal(deduped.technical_info, baseRow.technical_info);
   assert.equal(deduped.checklist.length, 2);
   assert.ok(deduped.checklist.every((step) => step.source_field === "remedy"));
 
+  // Real Trap Knowledge contains many duplicate/version rows whose trap_name
+  // differs while the controlled troubleshooting guidance is equivalent. That
+  // metadata difference must not create a false data conflict.
+  const trapMetadataVariant = buildOemAlarmPlaybookFromRows(
+    "keystats_table",
+    "ALM_100",
+    "ALM_100",
+    [
+      baseRow,
+      {
+        ...duplicateVersionRow,
+        trap_name: "majorAlarmTrap",
+      },
+    ],
+  );
+  assert.equal(trapMetadataVariant.status, "success");
+  assert.deepEqual(trapMetadataVariant.trap_names.sort(), ["alarmTrap", "majorAlarmTrap"].sort());
+  assert.equal(trapMetadataVariant.data_conflicts.length, 0);
+
   const remedyConflict = buildOemAlarmPlaybookFromRows(
     "keystats_table",
-    "ALM-100",
-    "ALM-100",
+    "ALM_100",
+    "ALM_100",
     [
       baseRow,
       {
@@ -93,8 +124,8 @@ try {
 
   const oemConflict = buildOemAlarmPlaybookFromRows(
     "keystats_table",
-    "ALM-100",
-    "ALM-100",
+    "ALM_100",
+    "ALM_100",
     [baseRow, { ...duplicateVersionRow, oem: "CommScope" }],
   );
   assert.equal(oemConflict.status, "data_conflict");
@@ -102,15 +133,15 @@ try {
 
   const noCrossAlarmLeak = buildOemAlarmPlaybookFromRows(
     "keystats_table",
-    "ALM-100",
-    "ALM-100",
+    "ALM_100",
+    "ALM_100",
     [
       baseRow,
       {
         alarm_identifier: "OTHER-999",
         oem: "JMA",
         trap_name: "Other Alarm",
-        description: "This must never leak into ALM-100.",
+        description: "This must never leak into ALM_100.",
         remedy: "Do not leak this remedy.",
         technical_info: "Do not leak this technical information.",
       },
@@ -120,6 +151,31 @@ try {
   assert.equal(noCrossAlarmLeak.source_row_count, 1);
   assert.equal(noCrossAlarmLeak.oem, "Corning");
   assert.ok(!JSON.stringify(noCrossAlarmLeak).includes("Do not leak"));
+
+  // Regression for the two separator-sensitive patterns found in the uploaded
+  // real table: rows for one identifier must not contaminate the other.
+  const separatorIsolation = buildOemAlarmPlaybookFromRows(
+    "keystats_table",
+    "temperature__High",
+    "temperature__High",
+    [
+      {
+        alarm_identifier: "Temperature High",
+        trap_name: "spvAlarmNotification",
+        description: "The module operating temperature is too high.",
+        remedy: "Improve the cooling of the system.",
+      },
+      {
+        alarm_identifier: "temperature__High",
+        trap_name: "majorAlarmTrap",
+        description: "",
+        remedy: "",
+      },
+    ],
+  );
+  assert.equal(separatorIsolation.status, "success");
+  assert.equal(separatorIsolation.source_row_count, 1);
+  assert.ok(!JSON.stringify(separatorIsolation).includes("Improve the cooling"));
 
   const notFound = buildOemAlarmPlaybookFromRows(
     "keystats_table",
@@ -156,7 +212,7 @@ try {
   );
 
   console.log(
-    "V113_OEM_CONTRACT_OK cases=6 exact_normalization=pass duplicate_versions=dedup conflict=fail_closed cross_alarm=blocked software_version_filter=off",
+    "V113_OEM_CONTRACT_OK cases=8 separator_preserving_exact_match=pass duplicate_versions=dedup metadata_variants=retained conflict=fail_closed cross_alarm=blocked software_version_filter=off",
   );
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
