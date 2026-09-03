@@ -5,6 +5,7 @@ const requiredFiles = [
   "agent/agent.ts",
   "agent/instructions.md",
   "agent/lib/investigation_state.ts",
+  "agent/lib/copilot_source.ts",
   "agent/lib/oem_playbook_source.ts",
   "agent/lib/resolution_history_source.ts",
   "agent/tools/agent.ts",
@@ -25,6 +26,7 @@ const requiredFiles = [
   "app/api/internal/oem-catalogue-check/route.ts",
   "app/api/internal/oem-catalogue-coverage/route.ts",
   "patch-v113/scripts/test-oem-contract.mjs",
+  "patch-v113/scripts/test-resolution-privacy.mjs",
 ];
 
 for (const path of requiredFiles) {
@@ -109,8 +111,13 @@ const oemSource = readFileSync("agent/lib/oem_playbook_source.ts", "utf8");
 for (const marker of [
   '"data_conflict"',
   "software_version_used: false",
+  'identifier_normalization: "trim_nfkc_casefold_preserve_separators"',
+  "oem_derived_from_alarm_identifier: false",
+  'oem_source: "explicit_oem_field_only"',
+  "mixed_comment_field_used: false",
   'duplicate_version_rows: "deduplicate_equivalent_guidance"',
   'conflicting_guidance: "return_data_conflict"',
+  "context",
   "trap_name",
   "description",
   "remedy",
@@ -122,6 +129,7 @@ for (const marker of [
 
 const oemTool = readFileSync("agent/tools/get_oem_alarm_guidance.ts", "utf8");
 for (const marker of [
+  "output.context",
   "output.trap_name",
   "output.description",
   "output.remedy",
@@ -131,6 +139,30 @@ for (const marker of [
   "output.data_conflicts",
 ]) {
   if (!oemTool.includes(marker)) throw new Error(`V113_OEM_TOOL_CONTRACT_MISSING ${marker}`);
+}
+
+const copilotSource = readFileSync("agent/lib/copilot_source.ts", "utf8");
+for (const marker of [
+  "_source_ticket_id",
+  "_source_change_id",
+  "Use the dedicated Trap Knowledge/OEM troubleshooting tool",
+]) {
+  if (!copilotSource.includes(marker)) {
+    throw new Error(`V113_DATA_ADAPTER_CONTRACT_MISSING ${marker}`);
+  }
+}
+
+const resolutionSource = readFileSync("agent/lib/resolution_history_source.ts", "utf8");
+for (const marker of [
+  "omitted_privacy_risk",
+  "conservativeNoteRisk",
+  "_source_ticket_id",
+  "_source_change_id",
+  'privacy: "anonymized_no_ticket_ids_sanitized_notes"',
+]) {
+  if (!resolutionSource.includes(marker)) {
+    throw new Error(`V113_RESOLUTION_PRIVACY_CONTRACT_MISSING ${marker}`);
+  }
 }
 
 for (const routePath of [
@@ -154,6 +186,9 @@ const coverageRoute = readFileSync("app/api/internal/oem-catalogue-coverage/rout
 for (const marker of [
   "model_calls: 0",
   "software_version_filter_used: false",
+  'identifier_normalization: "trim_nfkc_casefold_preserve_separators"',
+  "mixed_comment_field_used: false",
+  'oem_source: "explicit_oem_field_only"',
   'conflict_policy: "fail_closed"',
   'duplicate_version_policy: "deduplicate_equivalent_guidance"',
   "unknown_identifier_not_found",
@@ -198,8 +233,13 @@ for (const stale of ["incident-investigation", "troubleshooting-resolution", "kn
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 if (pkg.version !== "1.13.0") throw new Error(`V113_PACKAGE_VERSION ${pkg.version}`);
 
-execFileSync(process.execPath, ["patch-v113/scripts/test-oem-contract.mjs"], {
-  stdio: "inherit",
-});
+for (const testScript of [
+  "patch-v113/scripts/test-oem-contract.mjs",
+  "patch-v113/scripts/test-resolution-privacy.mjs",
+]) {
+  execFileSync(process.execPath, [testScript], { stdio: "inherit" });
+}
 
-console.log("V113_SOURCE_OK architecture=one-main-agent+4-skills+2-one-shot-specialists root_business_tools=4 disabled_defaults=7 oem_contract=exact+dedupe+conflict live_catalogue_harness=preview_only+aggregate mode=read_only");
+console.log(
+  "V113_SOURCE_OK architecture=one-main-agent+4-skills+2-one-shot-specialists root_business_tools=4 disabled_defaults=7 trap_contract=separator_safe+comment_ignored+dedupe+conflict resolution_privacy=deterministic+fail_closed live_catalogue_harness=preview_only+aggregate mode=read_only",
+);
