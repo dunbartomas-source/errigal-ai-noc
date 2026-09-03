@@ -90,4 +90,29 @@ export default defineTool({
       state: investigationState.get(),
     };
   },
+  toModelOutput(output: any) {
+    const state = output.state ?? {};
+    return {
+      type: "json" as const,
+      value: {
+        saved: output.saved,
+        update_reason: output.update_reason,
+        current_stage: state.current_stage,
+        issue_status: state.issue_status,
+        alarm_identifier: state.alarm_identifier,
+        stage_status: state.stage_status,
+        checks: Array.isArray(state.checks)
+          ? state.checks.map((check: any) => ({
+              id: check.id,
+              status: check.status,
+              observation: check.observation ?? null,
+            }))
+          : [],
+        recommended_action: state.recommended_action,
+        evidence_gaps: Array.isArray(state.evidence_gaps)
+          ? state.evidence_gaps.slice(0, 8)
+          : [],
+      },
+    };
+  },
 });

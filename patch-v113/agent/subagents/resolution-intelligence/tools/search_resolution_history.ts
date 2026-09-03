@@ -15,4 +15,35 @@ export default defineTool({
     })
     .strict(),
   execute: searchResolutionHistory,
+  toModelOutput(output: any) {
+    return {
+      type: "json" as const,
+      value: {
+        status: output.status,
+        privacy: output.privacy,
+        alarm_identifier: output.alarm_identifier,
+        source: output.source,
+        comparable_case_count: output.comparable_case_count ?? 0,
+        global_sample_count: output.global_sample_count ?? 0,
+        patterns: Array.isArray(output.patterns) ? output.patterns.slice(0, 6) : [],
+        anonymized_examples: Array.isArray(output.anonymized_examples)
+          ? output.anonymized_examples.slice(0, 5).map((item: any) => ({
+              root_cause: String(item.root_cause ?? "").slice(0, 240),
+              action: String(item.action ?? "").slice(0, 300),
+              outcome: String(item.outcome ?? "").slice(0, 200),
+              technology_type: String(item.technology_type ?? "").slice(0, 120),
+              sanitized_note: item.sanitized_note
+                ? String(item.sanitized_note).slice(0, 300)
+                : null,
+              note_privacy_status: item.note_privacy_status,
+              already_tried_match: item.already_tried_match,
+            }))
+          : [],
+        already_tried_actions: Array.isArray(output.already_tried_actions)
+          ? output.already_tried_actions.slice(0, 10)
+          : [],
+        warnings: Array.isArray(output.warnings) ? output.warnings.slice(-3) : [],
+      },
+    };
+  },
 });

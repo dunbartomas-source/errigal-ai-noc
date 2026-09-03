@@ -159,4 +159,62 @@ export default defineTool({
       warnings: result.warnings,
     };
   },
+  toModelOutput(output: any) {
+    if (output.status !== "success") {
+      return {
+        type: "json" as const,
+        value: {
+          status: output.status,
+          evidence_class: output.evidence_class,
+          warnings: Array.isArray(output.warnings) ? output.warnings.slice(0, 5) : [],
+        },
+      };
+    }
+
+    return {
+      type: "json" as const,
+      value: {
+        status: output.status,
+        evidence_class: output.evidence_class,
+        source: output.source,
+        requested_windows: output.requested_windows,
+        incident: output.incident,
+        network_identifier: output.network_identifier,
+        related_alarm_identifiers: Array.isArray(output.related_alarm_identifiers)
+          ? output.related_alarm_identifiers.slice(0, 20)
+          : [],
+        related_tickets: Array.isArray(output.related_tickets)
+          ? output.related_tickets.slice(0, 10)
+          : [],
+        recent_changes: Array.isArray(output.recent_changes)
+          ? output.recent_changes.slice(0, 10)
+          : [],
+        topology_dependencies: Array.isArray(output.topology_dependencies)
+          ? output.topology_dependencies.slice(0, 10)
+          : [],
+        correlation_required_hint: output.correlation_required_hint,
+        timeline: Array.isArray(output.timeline)
+          ? output.timeline.slice(0, 35).map((event: any) => ({
+              timestamp: event.timestamp ?? null,
+              event_type: event.event_type,
+              entity: event.entity ?? null,
+              description: String(event.description ?? "").slice(0, 240),
+            }))
+          : [],
+        evidence_gaps: Array.isArray(output.evidence_gaps)
+          ? output.evidence_gaps.slice(0, 10)
+          : [],
+        evidence_counts: {
+          raw_alarm_events: Array.isArray(output.recent_alarm_events)
+            ? output.recent_alarm_events.length
+            : 0,
+          timeline_events: Array.isArray(output.timeline) ? output.timeline.length : 0,
+          topology_dependencies: Array.isArray(output.topology_dependencies)
+            ? output.topology_dependencies.length
+            : 0,
+        },
+        warnings: Array.isArray(output.warnings) ? output.warnings.slice(0, 5) : [],
+      },
+    };
+  },
 });

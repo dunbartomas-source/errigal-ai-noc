@@ -20,4 +20,44 @@ export default defineTool({
       evidence_class: "structured_oem_guidance",
     };
   },
+  toModelOutput(output: any) {
+    if (output.status !== "success") {
+      return {
+        type: "json" as const,
+        value: {
+          status: output.status,
+          alarm_identifier: output.alarm_identifier,
+          warnings: Array.isArray(output.warnings) ? output.warnings.slice(0, 5) : [],
+          matching_policy: output.matching_policy,
+        },
+      };
+    }
+
+    return {
+      type: "json" as const,
+      value: {
+        status: output.status,
+        evidence_class: output.evidence_class,
+        alarm_identifier: output.alarm_identifier,
+        canonical_alarm_identifier: output.canonical_alarm_identifier,
+        oem: output.oem,
+        alarm_context: Array.isArray(output.alarm_context)
+          ? output.alarm_context.slice(0, 6)
+          : [],
+        remedy_information: Array.isArray(output.remedy_information)
+          ? output.remedy_information.slice(0, 6)
+          : [],
+        checklist: Array.isArray(output.checklist)
+          ? output.checklist.slice(0, 20).map((item: any) => ({
+              id: item.id,
+              text: String(item.text ?? "").slice(0, 500),
+              source_field: item.source_field,
+            }))
+          : [],
+        source_row_count: output.source_row_count,
+        matching_policy: output.matching_policy,
+        warnings: Array.isArray(output.warnings) ? output.warnings.slice(0, 5) : [],
+      },
+    };
+  },
 });
