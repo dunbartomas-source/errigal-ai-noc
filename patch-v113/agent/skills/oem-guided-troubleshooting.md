@@ -4,9 +4,11 @@ Use this Skill for the controlled first-line alarm procedure.
 
 ## Source rule
 
-Call `get_oem_alarm_guidance` with the alarm identifier. Do not ask for OEM, software version or firmware version. The alarm identifier is the matching key. The tool must return `not_found` rather than allowing you to invent a procedure.
+Call `get_oem_alarm_guidance` with the alarm identifier. Do not ask for OEM, software version or firmware version before the lookup. The alarm identifier is the matching key. The tool must return `not_found` rather than allowing you to invent a procedure.
 
-Treat returned `description`, `remedy`, `technical_info` and checklist items as controlled OEM evidence. Do not add steps that are not supported by that evidence.
+Treat returned `context`, `description`, `remedy`, `technical_info` and checklist items as controlled Trap Knowledge evidence. `trap_name` is source metadata and may be generic. Do not add troubleshooting steps that are not supported by the controlled evidence.
+
+The current Trap Knowledge export has a mixed-purpose `comment` field. It is not approved as an OEM field. If `oem` is null, say the OEM identity is not confirmed from the current structured source; do not infer it from `comment` or from the alarm wording.
 
 ## Human checkpoint
 
@@ -28,7 +30,7 @@ Persist material results with `update_investigation_state`.
 
 ## Gates
 
-If no applicable check has been completed, recommend the first safe applicable OEM check and WAIT. Do not search history or call a specialist.
+If no applicable check has been completed, recommend the first safe applicable OEM/Trap Knowledge check and WAIT. Do not search history or call a specialist.
 
 If some checks are complete, do not repeat them; continue with the next relevant incomplete check and WAIT.
 
