@@ -13,6 +13,7 @@ on:
       - "package.json"
       - "vercel.json"
       - ".github/workflows/v113-preview-evals.yml"
+      - ".github/scripts/**"
 
 permissions:
   contents: read
@@ -27,6 +28,7 @@ jobs:
     timeout-minutes: 25
     env:
       PREVIEW_URL: https://errigal-ai-noc-source-git-feature-ai-noc-5c465d-errigal-ai-noc.vercel.app
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       NO_COLOR: "1"
     steps:
       - name: Checkout
@@ -36,6 +38,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
+
+      - name: Verify automation bypass secret
+        shell: bash
+        run: |
+          if [ -z "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            echo "VERCEL_AUTOMATION_BYPASS_SECRET is missing from GitHub Actions secrets" >&2
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
@@ -56,10 +66,16 @@ jobs:
         run: |
           ok=0
           for attempt in $(seq 1 36); do
-            status=$(curl --silent --show-error --location --output /tmp/v113-health.txt --write-out "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            status=$(curl --silent --show-error --location \
+              --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+              --output /tmp/v113-health.txt \
+              --write-out "%{http_code}" \
+              "$PREVIEW_URL/api/health" || true)
             echo "Attempt $attempt: health HTTP $status"
-            if [ "$status" = "200" ]; then
-              cat /tmp/v113-health.txt || true
+            if [ "$status" = "200" ] \
+              && grep -q '"version":"1.13.0"' /tmp/v113-health.txt \
+              && grep -q '"universal_agentic"' /tmp/v113-health.txt; then
+              cat /tmp/v113-health.txt
               ok=1
               break
             fi
@@ -70,21 +86,49 @@ jobs:
       - name: Resolve immutable Vercel preview URL
         shell: bash
         run: |
-          eval_url=$(curl --silent --show-error --location --output /dev/null --write-out "%{url_effective}" "$PREVIEW_URL/")
+          eval_url=$(curl --silent --show-error --location \
+            --header "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+            --output /dev/null \
+            --write-out "%{url_effective}" \
+            "$PREVIEW_URL/")
           if [ -z "$eval_url" ]; then
             echo "Could not resolve immutable preview URL" >&2
             exit 1
           fi
           eval_url=${eval_url%/}
-          echo "Resolved Eve eval URL: $eval_url"
-          echo "EVAL_URL=$eval_url" >> "$GITHUB_ENV"
+          echo "Resolved protected Preview target without exposing bypass credentials."
+          echo "EVAL_TARGET_URL=$eval_url" >> "$GITHUB_ENV"
+
+      - name: Start authenticated local Preview proxy
+        shell: bash
+        run: |
+          EVAL_TARGET_URL="$EVAL_TARGET_URL" \
+          EVAL_PROXY_PORT=4173 \
+          node .github/scripts/vercel-preview-proxy.mjs > /tmp/v113-preview-proxy.log 2>&1 &
+          echo $! > /tmp/v113-preview-proxy.pid
+          ok=0
+          for attempt in $(seq 1 20); do
+            status=$(curl --silent --show-error --output /tmp/v113-proxy-health.txt --write-out "%{http_code}" http://127.0.0.1:4173/api/health || true)
+            if [ "$status" = "200" ] \
+              && grep -q '"version":"1.13.0"' /tmp/v113-proxy-health.txt; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ok" != "1" ]; then
+            cat /tmp/v113-preview-proxy.log || true
+            cat /tmp/v113-proxy-health.txt || true
+            exit 1
+          fi
+          echo "Authenticated Preview proxy is ready."
 
       - name: Run strict v1.13 conversational evals
         id: evals
         shell: bash
         run: |
           set +e
-          npx eve eval universal --url "$EVAL_URL" --strict 2>&1 | tee v113-evals.log
+          npx eve eval universal --url "http://127.0.0.1:4173" --strict 2>&1 | tee v113-evals.log
           status=${PIPESTATUS[0]}
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           echo ""
@@ -97,6 +141,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: v113-eval-trace
-          path: v113-evals.log
-          if-no-files-found: error
+          path: |
+            v113-evals.log
+            /tmp/v113-preview-proxy.log
+          if-no-files-found: warn
           retention-days: 7
