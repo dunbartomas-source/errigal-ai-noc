@@ -23,9 +23,6 @@ function compile(sourcePath, targetName) {
 }
 
 try {
-  // The contract tests exercise the exported pure row builder. The production
-  // module also imports synthetic demo fixtures for preview conversations; stub
-  // that unrelated dependency so this no-model test does not pull in the demo stack.
   writeFileSync(
     join(tempDir, "copilot_cases.js"),
     '"use strict"; Object.defineProperty(exports, "__esModule", { value: true }); exports.COPILOT_CASES = {};\n',
@@ -49,7 +46,6 @@ try {
 
   const baseRow = {
     alarm_identifier: "ALM_100",
-    oem: "Corning",
     comment: "IONM",
     context: "Input Power High Alarm",
     trap_name: "alarmTrap",
@@ -76,9 +72,13 @@ try {
   assert.equal(deduped.logical_playbook_count, 1);
   assert.equal(deduped.deduplicated_row_count, 1);
   assert.equal(deduped.matching_policy.software_version_used, false);
-  assert.equal(deduped.matching_policy.identifier_normalization, "trim_nfkc_casefold_preserve_separators");
-  assert.equal(deduped.oem, "Corning");
-  assert.equal(deduped.source_label, "IONM");
+  assert.equal(
+    deduped.matching_policy.identifier_normalization,
+    "trim_nfkc_casefold_preserve_separators",
+  );
+  assert.equal(deduped.matching_policy.oem_derived_from_alarm_identifier, false);
+  assert.equal(deduped.matching_policy.mixed_comment_field_used, false);
+  assert.equal(deduped.oem, null);
   assert.equal(deduped.context, "Input Power High Alarm");
   assert.equal(deduped.trap_name, "alarmTrap");
   assert.equal(deduped.description, baseRow.description);
@@ -86,37 +86,69 @@ try {
   assert.equal(deduped.technical_info, baseRow.technical_info);
   assert.equal(deduped.checklist.length, 2);
   assert.ok(deduped.checklist.every((step) => step.source_field === "remedy"));
+  assert.ok(!JSON.stringify(deduped).includes("IONM"));
 
-  // Real Trap Knowledge contains many duplicate/version rows whose trap_name
-  // differs while the controlled troubleshooting guidance is equivalent. That
-  // metadata difference must not create a false data conflict.
+  // A misleading comment value that looks like an OEM must never become OEM.
+  const mixedCommentIgnored = buildOemAlarmPlaybookFromRows(
+    "keystats_table",
+    "COMMENT-1",
+    "COMMENT-1",
+    [
+      {
+        alarm_identifier: "COMMENT-1",
+        comment: "Corning",
+        context: "Controlled context",
+        trap_name: "alarmTrap",
+        description: "Controlled description",
+        remedy: "Check the controlled source.",
+      },
+    ],
+  );
+  assert.equal(mixedCommentIgnored.status, "success");
+  assert.equal(mixedCommentIgnored.oem, null);
+  assert.ok(!JSON.stringify(mixedCommentIgnored).includes("Corning"));
+
+  // A future dedicated OEM field remains supported.
+  const explicitOem = buildOemAlarmPlaybookFromRows(
+    "keystats_table",
+    "OEM-1",
+    "OEM-1",
+    [
+      {
+        alarm_identifier: "OEM-1",
+        oem: "Corning",
+        comment: "Do not use this",
+        context: "Controlled context",
+        trap_name: "alarmTrap",
+        description: "Controlled description",
+        remedy: "Check the controlled source.",
+      },
+    ],
+  );
+  assert.equal(explicitOem.oem, "Corning");
+  assert.ok(!JSON.stringify(explicitOem).includes("Do not use this"));
+
+  // Real Trap Knowledge contains duplicate/version rows whose trap_name differs
+  // while controlled troubleshooting guidance is equivalent. Metadata variance
+  // must not create a false data conflict.
   const trapMetadataVariant = buildOemAlarmPlaybookFromRows(
     "keystats_table",
     "ALM_100",
     "ALM_100",
-    [
-      baseRow,
-      {
-        ...duplicateVersionRow,
-        trap_name: "majorAlarmTrap",
-      },
-    ],
+    [baseRow, { ...duplicateVersionRow, trap_name: "majorAlarmTrap" }],
   );
   assert.equal(trapMetadataVariant.status, "success");
-  assert.deepEqual(trapMetadataVariant.trap_names.sort(), ["alarmTrap", "majorAlarmTrap"].sort());
+  assert.deepEqual(
+    trapMetadataVariant.trap_names.sort(),
+    ["alarmTrap", "majorAlarmTrap"].sort(),
+  );
   assert.equal(trapMetadataVariant.data_conflicts.length, 0);
 
   const remedyConflict = buildOemAlarmPlaybookFromRows(
     "keystats_table",
     "ALM_100",
     "ALM_100",
-    [
-      baseRow,
-      {
-        ...duplicateVersionRow,
-        remedy: "Replace the module immediately.",
-      },
-    ],
+    [baseRow, { ...duplicateVersionRow, remedy: "Replace the module immediately." }],
   );
   assert.equal(remedyConflict.status, "data_conflict");
   assert.ok(remedyConflict.data_conflicts.some((item) => item.field === "remedy"));
@@ -124,9 +156,12 @@ try {
 
   const oemConflict = buildOemAlarmPlaybookFromRows(
     "keystats_table",
-    "ALM_100",
-    "ALM_100",
-    [baseRow, { ...duplicateVersionRow, oem: "CommScope" }],
+    "OEM-CONFLICT",
+    "OEM-CONFLICT",
+    [
+      { ...baseRow, alarm_identifier: "OEM-CONFLICT", oem: "Corning" },
+      { ...duplicateVersionRow, alarm_identifier: "OEM-CONFLICT", oem: "CommScope" },
+    ],
   );
   assert.equal(oemConflict.status, "data_conflict");
   assert.ok(oemConflict.data_conflicts.some((item) => item.field === "oem"));
@@ -139,7 +174,8 @@ try {
       baseRow,
       {
         alarm_identifier: "OTHER-999",
-        oem: "JMA",
+        comment: "JMA",
+        context: "Other context",
         trap_name: "Other Alarm",
         description: "This must never leak into ALM_100.",
         remedy: "Do not leak this remedy.",
@@ -149,11 +185,9 @@ try {
   );
   assert.equal(noCrossAlarmLeak.status, "success");
   assert.equal(noCrossAlarmLeak.source_row_count, 1);
-  assert.equal(noCrossAlarmLeak.oem, "Corning");
   assert.ok(!JSON.stringify(noCrossAlarmLeak).includes("Do not leak"));
+  assert.ok(!JSON.stringify(noCrossAlarmLeak).includes("JMA"));
 
-  // Regression for the two separator-sensitive patterns found in the uploaded
-  // real table: rows for one identifier must not contaminate the other.
   const separatorIsolation = buildOemAlarmPlaybookFromRows(
     "keystats_table",
     "temperature__High",
@@ -195,10 +229,12 @@ try {
       {
         alarm_identifier: "TECH-1",
         oem: "Nextivity",
-        trap_name: "Technical Procedure Test",
+        context: "Technical Procedure Test",
+        trap_name: "alarmTrap",
         description: "A controlled test row.",
         remedy: "Check the alarm state.",
-        technical_info: "1. Capture the current reading.\n2. Compare it with the approved threshold.",
+        technical_info:
+          "1. Capture the current reading.\n2. Compare it with the approved threshold.",
       },
     ],
   );
@@ -212,7 +248,7 @@ try {
   );
 
   console.log(
-    "V113_OEM_CONTRACT_OK cases=8 separator_preserving_exact_match=pass duplicate_versions=dedup metadata_variants=retained conflict=fail_closed cross_alarm=blocked software_version_filter=off",
+    "V113_OEM_CONTRACT_OK cases=10 separator_preserving_exact_match=pass mixed_comment=ignored explicit_oem_only=pass duplicate_versions=dedup metadata_variants=retained conflict=fail_closed cross_alarm=blocked software_version_filter=off",
   );
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
