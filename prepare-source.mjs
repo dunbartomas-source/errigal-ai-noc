@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-const sourceCommit = "618b041c337f4f973c6deef5bb97a3db32c76a69";
+const sourceCommit = "955b60e9fd6622cf899cb41d88873139477b75db";
 const base = `https://raw.githubusercontent.com/dunbartomas-source/errigal-ai-noc/${sourceCommit}`;
 async function fetchText(path) { const response = await fetch(`${base}/${path}`); if (!response.ok) throw new Error(`GitHub ${response.status} fetching ${path}`); return await response.text(); }
 async function applyVerifiedTextPatch(prefix, paths, expectedHash) { const contents=[]; for (const path of paths) contents.push({path,content:await fetchText(`${prefix}/${path}`)}); const hash=createHash("sha256"); for (const {path,content} of contents){hash.update(path);hash.update("\0");hash.update(content);hash.update("\0");} const actual=hash.digest("hex"); if(actual!==expectedHash) throw new Error(`PATCH_CHECKSUM_FAILED prefix=${prefix} expected=${expectedHash} actual=${actual}`); for(const {path,content} of contents){const slash=path.lastIndexOf("/"); if(slash>0) mkdirSync(path.slice(0,slash),{recursive:true}); writeFileSync(path,content);} return actual; }
