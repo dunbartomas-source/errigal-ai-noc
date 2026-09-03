@@ -1,0 +1,70 @@
+name: V113 Universal Preview Evals
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ai-noc-universal-agentic-workflow
+    paths:
+      - "patch-v113/**"
+      - "apply-v113.mjs"
+      - "prepare-source.mjs"
+      - "fix-source.mjs"
+      - "package.json"
+      - "vercel.json"
+      - ".github/workflows/v113-preview-evals.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v113-universal-preview-evals
+  cancel-in-progress: true
+
+jobs:
+  universal-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PREVIEW_URL: https://errigal-ai-noc-source-git-feature-ai-noc-5c465d-errigal-ai-noc.vercel.app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Reconstruct v1.13 source
+        run: |
+          node prepare-source.mjs
+          node fix-source.mjs
+          node apply-v113.mjs
+          mkdir -p evals/universal
+          cp patch-v113/evals/universal/*.eval.ts evals/universal/
+
+      - name: Type check source and evals
+        run: npx tsc --noEmit
+
+      - name: Wait for matching Vercel preview
+        shell: bash
+        run: |
+          ok=0
+          for attempt in $(seq 1 36); do
+            status=$(curl --silent --show-error --location --output /tmp/v113-health.txt --write-out "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            echo "Attempt $attempt: health HTTP $status"
+            if [ "$status" = "200" ]; then
+              cat /tmp/v113-health.txt || true
+              ok=1
+              break
+            fi
+            sleep 10
+          done
+          test "$ok" = "1"
+
+      - name: Run strict v1.13 conversational evals
+        run: npx eve eval universal --url "$PREVIEW_URL" --strict
