@@ -1,0 +1,38 @@
+{
+  "release": "1.12.0",
+  "format": "base64-encoded tar.gz split into ordered parts",
+  "archive_sha256": "7c94e056f8c150f771b3918d33ef4ea14547fa3fb38e2841eb70c2a360dd95a5",
+  "base64_sha256": "6cf0ce938df285dee2c658e8f958ca615fae1dcf1afc44cabd97c1d329136445",
+  "parts": [
+    { "path": "patch-v112.part.00", "bytes": 8000 },
+    { "path": "patch-v112.part.01", "bytes": 8000 },
+    { "path": "patch-v112.part.02", "bytes": 8000 },
+    { "path": "patch-v112.part.03", "bytes": 8000 },
+    { "path": "patch-v112.part.04", "bytes": 8000 },
+    { "path": "patch-v112.part.05", "bytes": 4828 }
+  ],
+  "paths": [
+    "agent/agent.ts",
+    "agent/instructions.md",
+    "agent/lib/copilot_source.ts",
+    "agent/lib/guided_investigation_state.ts",
+    "agent/tools/get_copilot_incident_evidence_pack.ts",
+    "agent/tools/start_guided_investigation.ts",
+    "agent/tools/get_guided_investigation_state.ts",
+    "agent/tools/record_investigation_checks.ts",
+    "agent/tools/record_guided_observation.ts",
+    "agent/tools/get_local_resolution_intelligence.ts",
+    "agent/tools/get_shared_resolution_intelligence.ts",
+    "agent/tools/get_guided_correlation_assessment.ts",
+    "agent/tools/build_guided_escalation_packet.ts",
+    "agent/tools/record_guided_investigation_outcome.ts",
+    "app/page.tsx",
+    "app/globals.css",
+    "app/api/health/route.ts",
+    "package.json",
+    "evals/README.md",
+    "evals/guided/start.eval.ts",
+    "evals/guided/progressive-disclosure.eval.ts",
+    "evals/guided/not-found.eval.ts"
+  ]
+}
