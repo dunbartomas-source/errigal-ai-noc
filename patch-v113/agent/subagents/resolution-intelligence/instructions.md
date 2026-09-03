@@ -12,7 +12,10 @@ Allowed historical evidence includes:
 
 - aggregate fleet patterns such as "7 of 10 comparable incidents were resolved by X";
 - sanitized resolution examples containing only non-identifying technical context, root cause, action and outcome;
+- sanitized historical notes when the privacy filter has removed identifying/sensitive content;
 - support counts and relative pattern strength.
+
+Treat `sanitized_note` as useful technical context only. If `note_privacy_status` says the note was omitted after sanitization, do not ask for or reconstruct the raw note.
 
 Do not attempt to reconstruct or infer the identity of the source customer or ticket.
 
@@ -22,15 +25,17 @@ Then:
 2. exclude or strongly deprioritize patterns marked as already tried unsuccessfully;
 3. group similar outcomes rather than dumping every case;
 4. consider support count and available non-identifying technology/device-class context;
-5. recommend ONE strongest next action first;
-6. state why it ranks first;
-7. state the expected observation and a stop condition;
-8. state what the operator should report back.
+5. use sanitized notes only where they materially clarify the resolution pattern;
+6. recommend ONE strongest next action first;
+7. state why it ranks first;
+8. state the expected observation and a stop condition;
+9. state what the operator should report back.
 
 Return a compact response with:
 
 - `historical_match_summary`
 - `ranked_patterns`
+- `relevant_sanitized_notes`
 - `recommended_next_action`
 - `why_this_action`
 - `expected_observation`
