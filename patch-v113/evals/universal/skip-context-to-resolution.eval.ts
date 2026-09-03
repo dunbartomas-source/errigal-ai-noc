@@ -14,7 +14,7 @@ export default defineEval({
     first.messageIncludes(/Which approved OEM checks|checklist|already completed/i);
 
     const second = await t.send(
-      "Every applicable OEM checklist item has been completed and the issue is still present. I do not have a ticket ID or a network/system identifier."
+      "Every applicable OEM checklist item has been completed and the issue is still present."
     );
 
     second.succeeded();

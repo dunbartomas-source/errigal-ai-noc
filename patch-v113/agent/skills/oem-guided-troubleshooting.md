@@ -42,4 +42,4 @@ If all applicable checks are complete and the issue remains, mark OEM troublesho
 
 `AI_NOC_CHOICES: {"question":"Do you have a ticket or network/system identifier for the context investigation?","choices":[{"id":"network","label":"Enter network/system identifier"},{"id":"ticket","label":"Enter ticket ID"},{"id":"skip_resolution","label":"I don't have either - show past resolutions"}]}`
 
-If the operator selects the no-identifier option, persist `context_investigation` as `operator_override`, record the missing current-context evidence, and continue directly to `resolution-intelligence` once. Do not ask for the identifier again. Present historical resolutions as anonymized evidence and hypotheses, never as proof.
+If the operator selects the no-identifier option, or has already explicitly said that neither identifier is available, persist `context_investigation` as `operator_override`, record the missing current-context evidence, and continue directly to `resolution-intelligence` once. Do not ask for the identifier again. Present historical resolutions as anonymized evidence and hypotheses, never as proof.
