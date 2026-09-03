@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineDynamic, defineTool } from "eve/tools";
 import { getOemAlarmPlaybook } from "../lib/oem_playbook_source";
 import { investigationState } from "../lib/investigation_state";
+import { ensureInvestigationId, recordToolAudit } from "../lib/tool_audit";
 
 function latestUserText(messages: any[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -69,7 +70,6 @@ export default defineDynamic({
         return null;
       }
 
-      // Direct Resolution deliberately bypasses first-line OEM execution.
       if (explicitEntryMode === "resolution") return null;
       if (
         state.entry_mode === "resolution" &&
@@ -81,8 +81,6 @@ export default defineDynamic({
         return null;
       }
 
-      // Deterministic Trap Knowledge lookup is exposed only inside the approved
-      // OEM troubleshooting Skill.
       if (!oemSkillLoaded(messages)) return null;
 
       return defineTool({
@@ -90,6 +88,8 @@ export default defineDynamic({
           "Read controlled Trap Knowledge guidance for one alarm identifier. Matching is case-insensitive exact matching that preserves spaces, underscores and punctuation. Software/firmware version is intentionally not a filter. Equivalent version rows deduplicate; materially conflicting description/remedy/technical_info fails closed. The mixed comment field is ignored and OEM is returned only when a dedicated OEM/vendor/manufacturer field exists. Never fuzzy-match.",
         inputSchema: z.object({ alarm_identifier: z.string().min(1) }).strict(),
         execute: async ({ alarm_identifier }) => {
+          const startedAt = Date.now();
+          const investigationId = ensureInvestigationId();
           const result = await getOemAlarmPlaybook(alarm_identifier);
           const now = new Date().toISOString();
 
@@ -101,6 +101,7 @@ export default defineDynamic({
             }));
             investigationState.update((current) => ({
               ...current,
+              investigation_id: current.investigation_id ?? investigationId,
               entry_mode: (explicitEntryMode as any) ?? current.entry_mode,
               current_stage: "oem_troubleshooting",
               alarm_identifier:
@@ -129,6 +130,7 @@ export default defineDynamic({
                 : `No controlled Trap Knowledge guidance was available for alarm identifier ${alarm_identifier.trim()}.`;
             investigationState.update((current) => ({
               ...current,
+              investigation_id: current.investigation_id ?? investigationId,
               entry_mode: (explicitEntryMode as any) ?? current.entry_mode,
               current_stage: "oem_troubleshooting",
               alarm_identifier:
@@ -137,6 +139,18 @@ export default defineDynamic({
               updated_at: now,
             }));
           }
+
+          recordToolAudit({
+            actor: "oem-guided-troubleshooting",
+            tool: "get_oem_alarm_guidance",
+            status: result.status,
+            started_at_ms: startedAt,
+            safe_row_count: result.source_row_count,
+            source_class: "trap_knowledge",
+            freshness: "reference_table_current_snapshot",
+            privacy_state: "mixed_comment_ignored_explicit_oem_only",
+            investigation_id: investigationId,
+          });
 
           if (result.status !== "success") return result;
           return {
