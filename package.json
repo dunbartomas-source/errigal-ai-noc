@@ -1,9 +1,9 @@
 {
   "name": "errigal-ai-noc",
-  "version": "1.9.0",
+  "version": "1.12.0",
   "private": true,
   "scripts": {
-    "build": "node prepare-source.mjs && next build && node scripts/provider-smoke.mjs",
+    "build": "node prepare-source.mjs && node fix-source.mjs && next build && node scripts/provider-smoke.mjs",
     "dev": "next dev",
     "start": "next start"
   },
