@@ -65,7 +65,6 @@ export default defineDynamic({
       const explicitEntryMode = entryModeFromText(text);
       const state = investigationState.get();
 
-      // OEM evidence is fetched once and then persisted as canonical session state.
       if (state.oem_guidance_loaded || hasToolMessage(messages, "get_oem_alarm_guidance")) {
         return null;
       }
@@ -82,12 +81,13 @@ export default defineDynamic({
         return null;
       }
 
-      // The deterministic lookup is exposed only inside the approved OEM Skill.
+      // Deterministic Trap Knowledge lookup is exposed only inside the approved
+      // OEM troubleshooting Skill.
       if (!oemSkillLoaded(messages)) return null;
 
       return defineTool({
         description:
-          "Read the controlled Trap_KnowledgeTable guidance for one alarm identifier. Exact normalized alarm_identifier is the matching key. Software/firmware version is intentionally not a filter. Equivalent version rows deduplicate; materially conflicting controlled guidance returns data_conflict. Never fuzzy-match.",
+          "Read controlled Trap Knowledge guidance for one alarm identifier. Matching is case-insensitive exact matching that preserves spaces, underscores and punctuation. Software/firmware version is intentionally not a filter. Equivalent version rows deduplicate; materially conflicting description/remedy/technical_info fails closed. The mixed comment field is ignored and OEM is returned only when a dedicated OEM/vendor/manufacturer field exists. Never fuzzy-match.",
         inputSchema: z.object({ alarm_identifier: z.string().min(1) }).strict(),
         execute: async ({ alarm_identifier }) => {
           const result = await getOemAlarmPlaybook(alarm_identifier);
@@ -107,7 +107,8 @@ export default defineDynamic({
                 result.canonical_alarm_identifier || result.alarm_identifier,
               oem: result.oem ?? current.oem,
               trap_name: result.trap_name ?? current.trap_name,
-              alarm_description: result.description ?? current.alarm_description,
+              alarm_description:
+                result.description ?? result.context ?? current.alarm_description,
               oem_guidance_loaded: true,
               checks: mergeChecklist(current.checks, incomingChecks),
               stage_status: {
@@ -124,8 +125,8 @@ export default defineDynamic({
           } else {
             const gap =
               result.status === "data_conflict"
-                ? `Controlled OEM guidance conflict for alarm identifier ${result.canonical_alarm_identifier}. No version row was selected automatically.`
-                : `No controlled OEM guidance was available for alarm identifier ${alarm_identifier.trim()}.`;
+                ? `Controlled Trap Knowledge guidance conflict for alarm identifier ${result.canonical_alarm_identifier}. No version row was selected automatically.`
+                : `No controlled Trap Knowledge guidance was available for alarm identifier ${alarm_identifier.trim()}.`;
             investigationState.update((current) => ({
               ...current,
               entry_mode: (explicitEntryMode as any) ?? current.entry_mode,
@@ -140,7 +141,7 @@ export default defineDynamic({
           if (result.status !== "success") return result;
           return {
             ...result,
-            evidence_class: "structured_oem_guidance",
+            evidence_class: "structured_trap_knowledge_guidance",
           };
         },
         toModelOutput(output: any) {
@@ -152,6 +153,12 @@ export default defineDynamic({
                 alarm_identifier: output.alarm_identifier,
                 canonical_alarm_identifier: output.canonical_alarm_identifier,
                 source_row_count: output.source_row_count ?? 0,
+                contexts: Array.isArray(output.contexts)
+                  ? output.contexts.slice(0, 5)
+                  : [],
+                trap_names: Array.isArray(output.trap_names)
+                  ? output.trap_names.slice(0, 5)
+                  : [],
                 data_conflicts: Array.isArray(output.data_conflicts)
                   ? output.data_conflicts.slice(0, 5)
                   : [],
@@ -169,6 +176,7 @@ export default defineDynamic({
               alarm_identifier: output.alarm_identifier,
               canonical_alarm_identifier: output.canonical_alarm_identifier,
               oem: output.oem,
+              context: output.context,
               trap_name: output.trap_name,
               description: output.description,
               remedy: output.remedy,
