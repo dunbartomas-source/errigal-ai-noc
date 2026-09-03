@@ -444,9 +444,7 @@ function shouldShowRecommendationFeedback(
   stage: number,
 ): boolean {
   if (control || stage < 5) return false;
-  return /strongest next action|recommended next action|recommend(?:ed|ation).*action/i.test(
-    text,
-  );
+  return /strongest next action|recommended next action|next safest evidence-led (?:step|action)|recommend(?:ed|ation).*action/i.test(text);
 }
 
 function RecommendationFeedback({
