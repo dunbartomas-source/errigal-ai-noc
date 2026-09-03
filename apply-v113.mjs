@@ -53,21 +53,39 @@ const v113Paths = [
 
 for (const path of v113Paths) copyFile(`patch-v113/${path}`, path);
 
+// Remove framework defaults that are not part of the approved read-only NOC surface.
+// ask_question is intentionally disabled: UI questions are normal assistant turns/markers,
+// avoiding parked Eve input requests that complicate deterministic investigation state.
+const disabledBuiltins = [
+  "bash",
+  "read_file",
+  "write_file",
+  "web_fetch",
+  "web_search",
+  "todo",
+  "ask_question",
+];
+const disabledScopes = [
+  "agent/tools",
+  "agent/subagents/correlation-root-cause/tools",
+  "agent/subagents/resolution-intelligence/tools",
+];
+for (const scope of disabledScopes) {
+  for (const tool of disabledBuiltins) {
+    copyFile(`patch-v113/${scope}/${tool}.ts`, `${scope}/${tool}.ts`);
+  }
+}
+
 // v1.13 exposes only the capabilities required by the universal conversational architecture.
 // Legacy implementation remains in repository/source archives for reference but is removed from
 // the active Eve discovery tree so it cannot consume prompt/tool context or be invoked accidentally.
 const inactiveCapabilityPaths = [
-  // Legacy specialist roles replaced by the main Investigator + Skills.
   "agent/subagents/incident-investigation",
   "agent/subagents/troubleshooting-resolution",
   "agent/subagents/network-intelligence",
   "agent/subagents/noc-operations",
   "agent/subagents/knowledge-learning",
-
-  // Legacy correlation evidence-pack tool; v1.13 correlation receives a compact parent handoff.
   "agent/subagents/correlation-root-cause/tools/get_root_cause_evidence_pack.ts",
-
-  // Legacy guided-orchestrator root tools replaced by the v1.13 progressive tool set.
   "agent/tools/build_guided_escalation_packet.ts",
   "agent/tools/get_copilot_incident_evidence_pack.ts",
   "agent/tools/get_guided_correlation_assessment.ts",
@@ -78,12 +96,8 @@ const inactiveCapabilityPaths = [
   "agent/tools/record_guided_observation.ts",
   "agent/tools/record_investigation_checks.ts",
   "agent/tools/start_guided_investigation.ts",
-
-  // Alarm-specific Skills are retained in source history but not active in the generic all-alarm pilot.
   "agent/skills/power-fault-troubleshooting.md",
   "agent/skills/communication-loss-troubleshooting.md",
-
-  // State implementation used only by the removed legacy guided tools.
   "agent/lib/guided_investigation_state.ts",
 ];
 

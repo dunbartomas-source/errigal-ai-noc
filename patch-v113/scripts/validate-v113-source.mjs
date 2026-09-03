@@ -27,6 +27,30 @@ for (const path of requiredFiles) {
   if (!existsSync(path)) throw new Error(`V113_SOURCE_MISSING ${path}`);
 }
 
+const disabledBuiltins = [
+  "bash",
+  "read_file",
+  "write_file",
+  "web_fetch",
+  "web_search",
+  "todo",
+  "ask_question",
+];
+const disabledScopes = [
+  "agent/tools",
+  "agent/subagents/correlation-root-cause/tools",
+  "agent/subagents/resolution-intelligence/tools",
+];
+for (const scope of disabledScopes) {
+  for (const tool of disabledBuiltins) {
+    const path = `${scope}/${tool}.ts`;
+    if (!existsSync(path)) throw new Error(`V113_DISABLED_TOOL_MISSING ${path}`);
+    if (!readFileSync(path, "utf8").includes("disableTool")) {
+      throw new Error(`V113_DISABLED_TOOL_INVALID ${path}`);
+    }
+  }
+}
+
 const removedCapabilities = [
   "agent/subagents/incident-investigation",
   "agent/subagents/troubleshooting-resolution",
@@ -48,7 +72,6 @@ const removedCapabilities = [
   "agent/skills/communication-loss-troubleshooting.md",
   "agent/lib/guided_investigation_state.ts",
 ];
-
 for (const removed of removedCapabilities) {
   if (existsSync(removed)) throw new Error(`V113_DEPRECATED_CAPABILITY_PRESENT ${removed}`);
 }
@@ -59,14 +82,24 @@ for (const marker of [
   "correlation-root-cause",
   "resolution-intelligence",
   "Software version may matter later",
-  "Use at most one specialist subagent",
+  "Maximum one specialist invocation per user turn",
   "State persistence is mandatory",
+  "Do not park a turn",
 ]) {
   if (!instructions.includes(marker)) throw new Error(`V113_INSTRUCTION_MISSING ${marker}`);
 }
 
 const disabledAgent = readFileSync("agent/tools/agent.ts", "utf8");
 if (!disabledAgent.includes("disableTool")) throw new Error("V113_GENERIC_AGENT_NOT_DISABLED");
+
+for (const specialist of [
+  "agent/subagents/correlation-root-cause/agent.ts",
+  "agent/subagents/resolution-intelligence/agent.ts",
+]) {
+  if (!readFileSync(specialist, "utf8").includes("outputSchema")) {
+    throw new Error(`V113_SPECIALIST_OUTPUT_SCHEMA_MISSING ${specialist}`);
+  }
+}
 
 const chat = readFileSync("app/investigate/investigation-chat.tsx", "utf8");
 for (const marker of [
@@ -102,4 +135,4 @@ for (const stale of ["incident-investigation", "troubleshooting-resolution", "kn
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 if (pkg.version !== "1.13.0") throw new Error(`V113_PACKAGE_VERSION ${pkg.version}`);
 
-console.log("V113_SOURCE_OK architecture=one-main-agent+4-skills+2-specialists root_tools=4 mode=read_only");
+console.log("V113_SOURCE_OK architecture=one-main-agent+4-skills+2-one-shot-specialists root_business_tools=4 disabled_defaults=7 mode=read_only");
