@@ -80,6 +80,26 @@ export function normalizeAlarmIdentifier(value: unknown): string {
     .toLocaleUpperCase();
 }
 
+const DEMO_PREFIX = "DEMO-";
+
+function demoModeAllowed(): boolean {
+  return (
+    process.env.VERCEL_ENV !== "production" ||
+    String(process.env.AI_NOC_ALLOW_SYNTHETIC_DEMO ?? "").toLowerCase() === "true"
+  );
+}
+
+function demoSourceAlarmIdentifier(value: unknown): string | null {
+  const requested = normalizeAlarmIdentifier(value);
+  if (!requested.startsWith(DEMO_PREFIX)) return null;
+  const sourceIdentifier = requested.slice(DEMO_PREFIX.length);
+  const exists = Object.values(COPILOT_CASES).some(
+    (candidate: any) =>
+      normalizeAlarmIdentifier(candidate?.incident?.alarm_identifier) === sourceIdentifier,
+  );
+  return exists ? sourceIdentifier : null;
+}
+
 function firstValue(row: any, keys: string[]): string {
   for (const key of keys) {
     const value = row?.[key];
@@ -448,9 +468,10 @@ async function fromOemTable(identifier: string): Promise<OemAlarmPlaybookResult>
 
 function fromSyntheticCases(identifier: string): OemAlarmPlaybookResult {
   const normalized = normalizeAlarmIdentifier(identifier);
+  const sourceIdentifier = demoSourceAlarmIdentifier(normalized) ?? normalized;
   const selected = Object.values(COPILOT_CASES).find(
     (candidate: any) =>
-      normalizeAlarmIdentifier(candidate?.incident?.alarm_identifier) === normalized,
+      normalizeAlarmIdentifier(candidate?.incident?.alarm_identifier) === sourceIdentifier,
   ) as any;
 
   if (!selected) {
@@ -502,13 +523,18 @@ function fromSyntheticCases(identifier: string): OemAlarmPlaybookResult {
     normalized,
     normalized,
     [row],
-    ["Synthetic demonstration guidance; live validation uses the approved Trap Knowledge table."],
+    [
+      "Synthetic demonstration guidance; this incident is clearly separated from live Trap Knowledge data.",
+    ],
   );
 }
 
 export async function getOemAlarmPlaybook(
   alarmIdentifier: string,
 ): Promise<OemAlarmPlaybookResult> {
+  if (demoModeAllowed() && demoSourceAlarmIdentifier(alarmIdentifier)) {
+    return fromSyntheticCases(alarmIdentifier);
+  }
   const source = String(process.env.AI_NOC_DATA_SOURCE ?? "synthetic").toLowerCase();
   return source === "keystats"
     ? fromOemTable(alarmIdentifier)

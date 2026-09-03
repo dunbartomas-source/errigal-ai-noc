@@ -18,5 +18,6 @@ export default defineEval({
     turn.notCalledTool("get_universal_context");
     turn.notEvent("subagent.called");
     turn.messageIncludes(/not found|no matching|unavailable|knowledge gap|controlled/i);
+    turn.messageIncludes(/try another|network\/system|demo/i);
   },
 });

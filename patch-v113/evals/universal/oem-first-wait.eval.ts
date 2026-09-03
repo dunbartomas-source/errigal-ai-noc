@@ -6,14 +6,14 @@ export default defineEval({
   tags: ["universal", "v113", "oem", "cost-control"],
   async test(t) {
     const turn = await t.send(
-      "ENTRY_MODE: full. The alarm identifier is PWR-FAIL. I have not completed any troubleshooting yet. Start the investigation."
+      "ENTRY_MODE: full. The alarm identifier is DEMO-PWR-FAIL. This is the synthetic demo walkthrough. I have not completed any troubleshooting yet. Start the investigation."
     );
 
     turn.succeeded();
     turn.noFailedActions();
     turn.loadedSkill("oem-guided-troubleshooting");
     turn.calledTool("get_oem_alarm_guidance", {
-      input: { alarm_identifier: "PWR-FAIL" },
+      input: { alarm_identifier: "DEMO-PWR-FAIL" },
       count: 1,
     });
     turn.notCalledTool("get_universal_context");
@@ -21,5 +21,6 @@ export default defineEval({
     turn.notEvent("subagent.called");
     turn.messageIncludes(/OEM|manufacturer|approved/i);
     turn.messageIncludes(/check|troubleshoot|verify/i);
+    turn.messageIncludes(/demo|synthetic/i);
   },
 });

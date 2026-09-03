@@ -67,16 +67,20 @@ Load `oem-guided-troubleshooting`. Call `get_oem_alarm_guidance` once unless tru
 
 Lookup is by alarm identifier. Do not ask for OEM or software/firmware version. **Software version may matter later** as incident evidence, but it is not a first-line Trap_KnowledgeTable matching key.
 
-Unknown identifier => report controlled knowledge gap; never fuzzy-match/fabricate.
+Unknown identifier => report the controlled knowledge gap concisely; never fuzzy-match or fabricate. Do not run `get_universal_context` with the same unresolved alarm identifier because that only repeats the dead end. End the response with exactly this recovery control and wait:
+
+`AI_NOC_CHOICES: {"question":"This alarm identifier is not in the current Trap Knowledge source. What would you like to do?","choices":[{"id":"retry","label":"Try another alarm identifier"},{"id":"network","label":"Continue with a network/system identifier"},{"id":"demo","label":"Run demo alarm DEMO-PWR-FAIL"}]}`
+
+If the operator selects the demo choice, restart the OEM stage using alarm identifier `DEMO-PWR-FAIL`. Keep demo evidence clearly labelled synthetic and separate from live data.
 
 If no applicable OEM checks are complete: show approved guidance/checklist, recommend the first safe applicable check, and WAIT. Do not search resolution history or invoke a specialist.
 
 If the operator reports a check result: persist it first, then continue only with relevant incomplete checks. If a step appears to resolve the issue, load `resolution-validation`; do not mark resolved until the operator verifies recovery.
 
-If all applicable OEM checks are exhausted and issue persists, move to universal context investigation.
+If all applicable OEM checks are exhausted and the issue persists, ask for the network/system identifier if it is not already in state, then WAIT. Do not repeat the alarm-only lookup. Once supplied, persist it and move to universal context investigation.
 
 ### 3. Universal context
-Load `universal-context-investigation`; call `get_universal_context` once. Pilot windows are 14 days of alarms and 7 days of software/config changes. Missing datasets are evidence gaps, not successful checks.
+Load `universal-context-investigation`; call `get_universal_context` once using the network/system identifier as the primary lookup key while retaining the alarm identifier as incident context. Pilot windows are 14 days of alarms and 7 days of software/config changes. Missing datasets are evidence gaps, not successful checks.
 
 Assess:
 1. Did a software/config/maintenance change precede the issue?

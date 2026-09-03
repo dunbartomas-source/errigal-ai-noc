@@ -123,6 +123,8 @@ for (const marker of [
   "remedy",
   "technical_info",
   "buildOemAlarmPlaybookFromRows",
+  'const DEMO_PREFIX = "DEMO-"',
+  "demoModeAllowed",
 ]) {
   if (!oemSource.includes(marker)) throw new Error(`V113_OEM_CONTRACT_MISSING ${marker}`);
 }
@@ -146,6 +148,9 @@ for (const marker of [
   "_source_ticket_id",
   "_source_change_id",
   "Use the dedicated Trap Knowledge/OEM troubleshooting tool",
+  'const DEMO_PREFIX = "DEMO-"',
+  "getSyntheticCase",
+  "return getKeystatsCase(ticketId.trim())",
 ]) {
   if (!copilotSource.includes(marker)) {
     throw new Error(`V113_DATA_ADAPTER_CONTRACT_MISSING ${marker}`);
@@ -245,8 +250,23 @@ for (const marker of [
   "Find Past Resolutions",
   "completed_resolved",
   "completed_unresolved",
+  "Start Full AI-NOC Investigation",
+  "DEMO-PWR-FAIL",
+  "startAlarmInvestigation",
+  "Run demo alarm",
 ]) {
   if (!chat.includes(marker)) throw new Error(`V113_UI_MISSING ${marker}`);
+}
+
+for (const marker of [
+  "Do not run `get_universal_context` with the same unresolved alarm identifier",
+  "Continue with a network/system identifier",
+  "Run demo alarm DEMO-PWR-FAIL",
+  "ask for the network/system identifier",
+]) {
+  if (!instructions.includes(marker)) {
+    throw new Error(`V113_ALARM_FIRST_WORKFLOW_MISSING ${marker}`);
+  }
 }
 
 const stateTool = readFileSync("agent/tools/update_investigation_state.ts", "utf8");

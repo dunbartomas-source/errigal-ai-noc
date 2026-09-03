@@ -6,6 +6,8 @@ Use this Skill for the controlled first-line alarm procedure.
 
 Call `get_oem_alarm_guidance` with the alarm identifier. Do not ask for OEM, software version or firmware version before the lookup. The alarm identifier is the matching key. The tool must return `not_found` rather than allowing you to invent a procedure.
 
+If the result is `not_found`, do not call universal context with that same unresolved identifier. Explain the gap in one short paragraph and offer only: retry the identifier, continue with a network/system identifier, or run the clearly labelled `DEMO-PWR-FAIL` walkthrough. Then wait.
+
 Treat returned `context`, `description`, `remedy`, `technical_info` and checklist items as controlled Trap Knowledge evidence. `trap_name` is source metadata and may be generic. Do not add troubleshooting steps that are not supported by the controlled evidence.
 
 The current Trap Knowledge export has a mixed-purpose `comment` field. It is not approved as an OEM field. If `oem` is null, say the OEM identity is not confirmed from the current structured source; do not infer it from `comment` or from the alarm wording.
@@ -36,4 +38,4 @@ If some checks are complete, do not repeat them; continue with the next relevant
 
 If a check resolves the problem, move to `resolution-validation`.
 
-If all applicable checks are complete and the issue remains, mark OEM troubleshooting complete and move to `universal-context-investigation` in the full workflow.
+If all applicable checks are complete and the issue remains, mark OEM troubleshooting complete. In the full workflow, ask for the network/system identifier when it is not already known and wait for the operator before moving to `universal-context-investigation`.

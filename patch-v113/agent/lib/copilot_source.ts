@@ -25,6 +25,82 @@ function configuredSource(): CopilotSourceMode {
   return requested === "keystats" ? "keystats" : "synthetic";
 }
 
+const DEMO_PREFIX = "DEMO-";
+
+function normalizedIdentifier(value: unknown): string {
+  return String(value ?? "").normalize("NFKC").trim().toLocaleUpperCase();
+}
+
+function demoModeAllowed(): boolean {
+  return (
+    process.env.VERCEL_ENV !== "production" ||
+    String(process.env.AI_NOC_ALLOW_SYNTHETIC_DEMO ?? "").toLowerCase() === "true"
+  );
+}
+
+function demoSourceAlarmIdentifier(value: unknown): string | null {
+  const requested = normalizedIdentifier(value);
+  if (!requested.startsWith(DEMO_PREFIX)) return null;
+  const sourceIdentifier = requested.slice(DEMO_PREFIX.length);
+  const exists = Object.values(COPILOT_CASES).some(
+    (candidate: any) =>
+      normalizedIdentifier(candidate?.incident?.alarm_identifier) === sourceIdentifier,
+  );
+  return exists ? sourceIdentifier : null;
+}
+
+function getSyntheticCase(
+  tenantId: string,
+  ticketId: string,
+  alarmIdentifier?: string,
+  explicitDemo = false,
+): CopilotSourceResult {
+  const requestedAlarm = normalizedIdentifier(alarmIdentifier ?? ticketId);
+  const sourceAlarm = demoSourceAlarmIdentifier(requestedAlarm) ?? requestedAlarm;
+  const selected =
+    COPILOT_CASES[ticketId] ??
+    Object.values(COPILOT_CASES).find(
+      (candidate: any) =>
+        normalizedIdentifier(candidate?.incident?.alarm_identifier) === sourceAlarm,
+    );
+  if (!selected || selected.tenant_id !== tenantId) {
+    return {
+      status: "not_found",
+      source: "synthetic",
+      read_only: true,
+      is_live: false,
+      case_data: null,
+      warnings: ["No matching demo ticket or alarm identifier"],
+    };
+  }
+
+  const caseData = explicitDemo
+    ? {
+        ...selected,
+        incident: {
+          ...selected.incident,
+          alarm_identifier: requestedAlarm,
+          demo: true,
+        },
+        warnings: [
+          ...(Array.isArray(selected.warnings) ? selected.warnings : []),
+          "Clearly labelled synthetic demonstration incident; no live customer record was used.",
+        ],
+      }
+    : selected;
+
+  return {
+    status: "success",
+    source: "synthetic",
+    read_only: true,
+    is_live: false,
+    case_data: caseData,
+    warnings: explicitDemo
+      ? ["Synthetic demo mode is active; operational lookups were not used."]
+      : [],
+  };
+}
+
 function serviceUrl(identifier: string): string | null {
   const base = String(process.env.AI_NOC_DATA_SERVICE_URL ?? "")
     .trim()
@@ -255,36 +331,17 @@ export async function getCopilotIncidentCase(
   ticketId: string,
   alarmIdentifier?: string,
 ): Promise<CopilotSourceResult> {
-  const source = configuredSource();
-  if (source === "keystats") {
-    return getKeystatsCase(alarmIdentifier?.trim() || ticketId.trim());
+  const requestedAlarm = alarmIdentifier?.trim() || ticketId.trim();
+  if (demoModeAllowed() && demoSourceAlarmIdentifier(requestedAlarm)) {
+    return getSyntheticCase(tenantId, ticketId, requestedAlarm, true);
   }
 
-  const wantedAlarm = String(alarmIdentifier ?? ticketId).trim().toLowerCase();
-  const selected =
-    COPILOT_CASES[ticketId] ??
-    Object.values(COPILOT_CASES).find(
-      (candidate: any) =>
-        String(candidate?.incident?.alarm_identifier ?? "")
-          .trim()
-          .toLowerCase() === wantedAlarm,
-    );
-  if (!selected || selected.tenant_id !== tenantId) {
-    return {
-      status: "not_found",
-      source,
-      read_only: true,
-      is_live: false,
-      case_data: null,
-      warnings: ["No matching demo ticket or alarm identifier"],
-    };
+  const source = configuredSource();
+  if (source === "keystats") {
+    // `ticketId` is the tool's selected primary lookup key. This preserves a
+    // supplied network/system identifier instead of silently replacing it with
+    // the alarm identifier that anchored the investigation.
+    return getKeystatsCase(ticketId.trim());
   }
-  return {
-    status: "success",
-    source,
-    read_only: true,
-    is_live: false,
-    case_data: selected,
-    warnings: [],
-  };
+  return getSyntheticCase(tenantId, ticketId, alarmIdentifier);
 }

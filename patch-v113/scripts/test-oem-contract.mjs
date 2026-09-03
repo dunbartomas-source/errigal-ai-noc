@@ -25,13 +25,15 @@ function compile(sourcePath, targetName) {
 try {
   writeFileSync(
     join(tempDir, "copilot_cases.js"),
-    '"use strict"; Object.defineProperty(exports, "__esModule", { value: true }); exports.COPILOT_CASES = {};\n',
+    '"use strict"; Object.defineProperty(exports, "__esModule", { value: true }); exports.COPILOT_CASES = { "A-DEMO": { tenant_id: "customer-a", incident: { ticket_id: "A-DEMO", alarm_identifier: "PWR-FAIL", summary: "Synthetic power failure", oem: "Corning" }, related_events: [{ alarm_identifier: "PWR-FAIL", offset_seconds: 0 }], deterministic_assessment: { correlation_required: false }, correlation: { sequence: [], dependencies: [] }, resolution_evidence: { local_history: [], global_patterns: { sample_count: 0 }, oem_guidance: { oem: "Corning", guidance: "Verify input voltage and power connections." } }, recommended_plan: [{ action: "Check the input voltage." }, { action: "Check the power connections." }], warnings: [] } };\n',
     "utf8",
   );
   compile("agent/lib/oem_playbook_source.ts", "oem_playbook_source.js");
+  compile("agent/lib/copilot_source.ts", "copilot_source.js");
 
   const {
     buildOemAlarmPlaybookFromRows,
+    getOemAlarmPlaybook,
     normalizeAlarmIdentifier,
   } = require(join(tempDir, "oem_playbook_source.js"));
 
@@ -247,8 +249,30 @@ try {
       .every((step) => step.source_field === "technical_info"),
   );
 
+  // Preview has one reserved, clearly labelled synthetic incident so the MVP
+  // remains testable even when a supplied live identifier is absent.
+  process.env.AI_NOC_DATA_SOURCE = "keystats";
+  process.env.VERCEL_ENV = "preview";
+  const demoPlaybook = await getOemAlarmPlaybook("demo-pwr-fail");
+  assert.equal(demoPlaybook.status, "success");
+  assert.equal(demoPlaybook.source, "synthetic_demo");
+  assert.equal(demoPlaybook.canonical_alarm_identifier, "DEMO-PWR-FAIL");
+  assert.equal(demoPlaybook.checklist.length, 2);
+  assert.ok(demoPlaybook.warnings.some((warning) => warning.includes("Synthetic")));
+
+  const { getCopilotIncidentCase } = require(join(tempDir, "copilot_source.js"));
+  const demoContext = await getCopilotIncidentCase(
+    "customer-a",
+    "DEMO-NETWORK",
+    "DEMO-PWR-FAIL",
+  );
+  assert.equal(demoContext.status, "success");
+  assert.equal(demoContext.source, "synthetic");
+  assert.equal(demoContext.case_data.incident.alarm_identifier, "DEMO-PWR-FAIL");
+  assert.equal(demoContext.case_data.incident.demo, true);
+
   console.log(
-    "V113_OEM_CONTRACT_OK cases=10 separator_preserving_exact_match=pass mixed_comment=ignored explicit_oem_only=pass duplicate_versions=dedup metadata_variants=retained conflict=fail_closed cross_alarm=blocked software_version_filter=off",
+    "V113_OEM_CONTRACT_OK cases=12 separator_preserving_exact_match=pass mixed_comment=ignored explicit_oem_only=pass duplicate_versions=dedup metadata_variants=retained conflict=fail_closed cross_alarm=blocked software_version_filter=off preview_demo=isolated",
   );
 } finally {
   rmSync(tempDir, { recursive: true, force: true });

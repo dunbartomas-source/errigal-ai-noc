@@ -20,12 +20,6 @@ type InvestigationControl = ChecklistControl | ChoiceControl;
 
 const STARTERS = [
   {
-    title: "Investigate an alarm",
-    description: "Start with an alarm identifier and narrow down what has already been ruled out.",
-    prompt:
-      "Start a guided investigation for alarm identifier 9618. Ask me what I have already checked before recommending a resolution.",
-  },
-  {
     title: "Continue a ticket",
     description: "Use the incident evidence and continue from the operator's current progress.",
     prompt:
@@ -261,6 +255,7 @@ export default function InvestigationChat() {
   const { data, status, error, send, reset, cancel } = useEveAgent();
   const messages = (data?.messages ?? []) as any[];
   const [input, setInput] = useState("");
+  const [alarmInput, setAlarmInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const busy = ["submitted", "streaming", "resuming"].includes(status);
 
@@ -285,6 +280,22 @@ export default function InvestigationChat() {
     void sendMessage(input);
   }
 
+  function startAlarmInvestigation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const alarmIdentifier = alarmInput.trim().replace(/\s+/g, " ");
+    if (!alarmIdentifier || busy) return;
+    void sendMessage(
+      `ENTRY_MODE: full. Alarm identifier ${alarmIdentifier}. I have not completed any OEM troubleshooting yet. Start with the exact Trap Knowledge lookup, show the approved checklist, and guide me one step at a time.`,
+    );
+  }
+
+  function startDemoInvestigation() {
+    if (busy) return;
+    void sendMessage(
+      "ENTRY_MODE: full. Alarm identifier DEMO-PWR-FAIL. This is the clearly labelled synthetic demo incident. I have not completed any OEM troubleshooting yet. Start with the demo Trap Knowledge checklist and guide me one step at a time.",
+    );
+  }
+
   return (
     <main className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -301,6 +312,7 @@ export default function InvestigationChat() {
           onClick={() => {
             reset();
             setInput("");
+            setAlarmInput("");
           }}
           type="button"
         >
@@ -365,10 +377,43 @@ export default function InvestigationChat() {
               <div className={styles.welcomeMark}>AI</div>
               <h2>What are you investigating?</h2>
               <p>
-                Give me an alarm identifier, ticket, device, or symptom. I will establish the
-                evidence, ask what you have already checked, and guide the investigation one
-                decision at a time.
+                Start with the alarm identifier. I will retrieve the approved OEM guidance,
+                record the checks already completed, and then investigate network context only
+                when the first-line procedure is exhausted.
               </p>
+              <div className={styles.alarmStartCard}>
+                <div className={styles.alarmStartHeading}>
+                  <div>
+                    <strong>Start Full AI-NOC Investigation</strong>
+                    <span>Exact Trap Knowledge lookup — no fuzzy matching</span>
+                  </div>
+                  <b>Step 1 of 5</b>
+                </div>
+                <form className={styles.alarmStartForm} onSubmit={startAlarmInvestigation}>
+                  <label htmlFor="alarm-identifier">Alarm identifier</label>
+                  <div>
+                    <input
+                      autoComplete="off"
+                      disabled={busy}
+                      id="alarm-identifier"
+                      maxLength={100}
+                      onChange={(event) => setAlarmInput(event.target.value)}
+                      placeholder="Enter the exact alarm identifier"
+                      value={alarmInput}
+                    />
+                    <button disabled={busy || !alarmInput.trim()} type="submit">
+                      Start investigation
+                    </button>
+                  </div>
+                </form>
+                <div className={styles.demoStartRow}>
+                  <span>Need a guaranteed working walkthrough?</span>
+                  <button disabled={busy} onClick={startDemoInvestigation} type="button">
+                    Run demo alarm
+                  </button>
+                </div>
+              </div>
+              <div className={styles.otherPathsLabel}>Other entry points</div>
               <div className={styles.starterGrid}>
                 {STARTERS.map((starter) => (
                   <button

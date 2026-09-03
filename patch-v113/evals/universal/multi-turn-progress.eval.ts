@@ -6,7 +6,7 @@ export default defineEval({
   tags: ["universal", "v113", "multi-turn", "state", "cost-control"],
   async test(t) {
     const first = await t.send(
-      "ENTRY_MODE: full. Alarm identifier PWR-FAIL. I have not done any OEM troubleshooting yet."
+      "ENTRY_MODE: full. Alarm identifier DEMO-PWR-FAIL. This is the synthetic demo walkthrough. I have not done any OEM troubleshooting yet."
     );
 
     first.succeeded();

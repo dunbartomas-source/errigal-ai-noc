@@ -331,12 +331,152 @@
   line-height: 1.65;
 }
 
+.alarmStartCard {
+  width: 100%;
+  margin-top: 28px;
+  padding: 20px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #cfd9e4;
+  border-top: 3px solid var(--navy-700);
+  border-radius: 15px;
+  box-shadow: 0 16px 38px rgba(23, 36, 55, 0.09);
+}
+
+.alarmStartHeading,
+.alarmStartForm > div,
+.demoStartRow {
+  display: flex;
+  align-items: center;
+}
+
+.alarmStartHeading {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.alarmStartHeading > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.alarmStartHeading strong {
+  color: var(--navy-900);
+  font-size: 15px;
+}
+
+.alarmStartHeading span,
+.demoStartRow span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.alarmStartHeading b {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  color: var(--navy-700);
+  background: var(--cream);
+  border-radius: 999px;
+  font-size: 9px;
+}
+
+.alarmStartForm {
+  margin-top: 16px;
+}
+
+.alarmStartForm label {
+  display: block;
+  margin-bottom: 6px;
+  color: #44536a;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.alarmStartForm > div {
+  gap: 9px;
+}
+
+.alarmStartForm input {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 12px 13px;
+  color: var(--ink);
+  background: #fbfcfd;
+  border: 1px solid #cfd8e2;
+  border-radius: 9px;
+  outline: none;
+  font: inherit;
+  font-size: 12px;
+}
+
+.alarmStartForm input:focus {
+  border-color: #8095ad;
+  box-shadow: 0 0 0 3px rgba(38, 66, 101, 0.08);
+}
+
+.alarmStartForm button,
+.demoStartRow button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.alarmStartForm button {
+  flex: 0 0 auto;
+  padding: 12px 15px;
+  color: #fff;
+  background: var(--navy-800);
+  border: 0;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.alarmStartForm button:disabled,
+.demoStartRow button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.demoStartRow {
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f3;
+}
+
+.demoStartRow span {
+  margin: 0;
+}
+
+.demoStartRow button {
+  padding: 7px 10px;
+  color: var(--navy-700);
+  background: #f7f2de;
+  border: 1px solid #e7ddb0;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.otherPathsLabel {
+  width: 100%;
+  margin-top: 26px;
+  color: #8994a5;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
 .starterGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
-  margin-top: 34px;
+  margin-top: 10px;
   text-align: left;
 }
 
@@ -729,6 +869,16 @@
 
   .starterGrid {
     grid-template-columns: 1fr;
+  }
+
+  .alarmStartForm > div,
+  .demoStartRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .alarmStartForm button {
+    width: 100%;
   }
 
   .welcome {
