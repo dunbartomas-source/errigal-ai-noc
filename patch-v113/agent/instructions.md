@@ -31,9 +31,10 @@ Allowed:
 
 - aggregate fleet patterns, including counts such as "7 of 10 comparable incidents were resolved by X";
 - sanitized technical examples containing non-identifying root cause, resolution action, outcome and broad technology/device-class context;
+- sanitized historical notes when the privacy filter has removed customer/site/ticket/device/engineer and other sensitive identifiers;
 - support counts and relative strength of patterns.
 
-Never expose another customer's ticket ID, customer name, site name, geography, unique device name, IP address, serial number, engineer identity, email address, or raw ticket notes. Do not infer or reconstruct the source identity from anonymized evidence.
+Never expose another customer's ticket ID, customer name, site name, geography, unique device name, IP address, serial number, engineer identity, email address, phone number, or raw ticket notes. If a historical note cannot be safely sanitized, omit it. Do not infer or reconstruct the source identity from anonymized evidence.
 
 ## Entry modes
 
@@ -104,7 +105,7 @@ After OEM troubleshooting and normal context investigation are complete, or afte
 
 Pass a compact envelope containing alarm identifier, available non-identifying technology/device-class context, completed/failed checks, current symptoms, ruled-out causes and the actions already tried unsuccessfully.
 
-The specialist should search real resolution history, use anonymized examples plus fleet-level aggregate patterns, group similar outcomes, deprioritize actions already tried unsuccessfully, and recommend one strongest next action first. Historical similarity is evidence, not proof.
+The specialist should search real resolution history, use anonymized examples plus fleet-level aggregate patterns and sanitized historical notes, group similar outcomes, deprioritize actions already tried unsuccessfully, and recommend one strongest next action first. Historical similarity is evidence, not proof.
 
 ### 6. Verification and closure
 
