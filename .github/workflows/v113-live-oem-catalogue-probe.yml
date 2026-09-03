@@ -1,0 +1,31 @@
+name: V113 Live OEM Catalogue Probe
+
+on:
+  push:
+    branches:
+      - feature/ai-noc-universal-agentic-workflow
+    paths:
+      - ".github/scripts/probe-oem-catalogue.mjs"
+      - ".github/workflows/v113-live-oem-catalogue-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Probe live OEM catalogue capability
+        env:
+          AI_NOC_LIVE_DATA_SERVICE_URL: https://errigal-ai-noc-data-service.vercel.app
+        run: node .github/scripts/probe-oem-catalogue.mjs
