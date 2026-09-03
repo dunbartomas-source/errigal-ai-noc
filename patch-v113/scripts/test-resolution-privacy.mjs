@@ -80,10 +80,19 @@ exports.getCopilotIncidentCase = async function () {
   assert.equal(result.status, "success");
   assert.equal(result.privacy, "anonymized_no_ticket_ids_sanitized_notes");
   assert.equal(result.comparable_case_count, 3);
-  assert.equal(result.anonymized_examples[0].sanitized_note, "Replaced failed remote power supply.");
-  assert.equal(result.anonymized_examples[0].note_privacy_status, "included_sanitized");
+  assert.equal(
+    result.anonymized_examples[0].sanitized_note,
+    "Replaced failed remote power supply.",
+  );
+  assert.equal(
+    result.anonymized_examples[0].note_privacy_status,
+    "included_sanitized",
+  );
   assert.equal(result.anonymized_examples[1].sanitized_note, null);
-  assert.equal(result.anonymized_examples[1].note_privacy_status, "omitted_privacy_risk");
+  assert.equal(
+    result.anonymized_examples[1].note_privacy_status,
+    "omitted_privacy_risk",
+  );
   assert.equal(result.anonymized_examples[2].already_tried_match, true);
 
   const serialized = JSON.stringify(result);
@@ -102,8 +111,17 @@ exports.getCopilotIncidentCase = async function () {
   ]) {
     assert.ok(!serialized.includes(forbidden), `privacy leak: ${forbidden}`);
   }
-  assert.ok(!serialized.includes("ticket_id"));
-  assert.ok(!serialized.includes("change_id"));
+
+  // The top-level redacted_fields transparency list is allowed to name fields
+  // that were removed. Case-level examples themselves must never expose them.
+  for (const example of result.anonymized_examples) {
+    assert.ok(!Object.hasOwn(example, "ticket_id"));
+    assert.ok(!Object.hasOwn(example, "change_id"));
+    assert.ok(!Object.hasOwn(example, "_source_ticket_id"));
+    assert.ok(!Object.hasOwn(example, "_source_change_id"));
+  }
+  assert.ok(result.redacted_fields.includes("ticket_id"));
+  assert.ok(result.redacted_fields.includes("change_id"));
 
   const rebootPattern = result.patterns.find((item) => item.action === "Reboot");
   assert.ok(rebootPattern);
