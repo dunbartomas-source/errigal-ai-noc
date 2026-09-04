@@ -137,6 +137,10 @@ writeFileSync(chatPath, chat);
 
 let pkg = readFileSync("package.json", "utf8");
 pkg = pkg.replace(/"version": "[^"]+"/, '"version": "1.13.0"');
+pkg = pkg.replace(
+  /"scripts": \{[\s\S]*?\n  \},\n  "dependencies"/,
+  '"scripts": {\n    "build": "node prepare-source.mjs && node fix-source.mjs && node apply-v113.mjs && next build && node scripts/provider-smoke.mjs",\n    "dev": "node prepare-source.mjs && node fix-source.mjs && node apply-v113.mjs && next dev",\n    "validate:v113": "node prepare-source.mjs && node fix-source.mjs && node apply-v113.mjs && npx tsc --noEmit"\n  },\n  "dependencies"',
+);
 if (!pkg.includes('"ai": "7.0.90"')) {
   pkg = pkg.replace(
     '"@ai-sdk/deepseek": "^3.0.36",',
