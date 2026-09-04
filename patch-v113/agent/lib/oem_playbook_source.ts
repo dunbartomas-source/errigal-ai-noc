@@ -482,7 +482,29 @@ async function fromOemTable(identifier: string): Promise<OemAlarmPlaybookResult>
 async function fromSupabaseTrapKnowledge(identifier: string): Promise<OemAlarmPlaybookResult> {
   const normalized = normalizeAlarmIdentifier(identifier);
   try {
-    const data = await supabaseRows("noc_trap_knowledge", normalized, "alarm_identifier,context,trap_name,description,remedy,technical_info,source_version,source_updated_at");
+    const [legacy, oemRecords] = await Promise.all([
+      supabaseRows("noc_trap_knowledge", normalized, "alarm_identifier,context,trap_name,description,remedy,technical_info,source_version,source_updated_at"),
+      supabaseRows("noc_oem_knowledge_records", normalized, "oem,record_type,alarm_identifier,product_family,product_model,hardware_module,evidence_classification,confidence,source_id,source_url,payload,source_version"),
+    ]);
+    const data = [...(Array.isArray(legacy) ? legacy : []), ...(Array.isArray(oemRecords) ? oemRecords
+      .filter((row: any) => ["alarm_catalogue", "jma_teko_alarm_catalogue", "oem_playbooks", "jma_teko_playbook_records", "jma_teko_scenarios"].includes(String(row.record_type)))
+      .map((row: any) => {
+        const p = row.payload ?? {};
+        return {
+          alarm_identifier: row.alarm_identifier ?? p.alarm_identifier ?? p.alarm_id ?? p.identifier,
+          oem: row.oem,
+          context: p.condition ?? p.condition_description ?? p.raising_condition ?? p.service_impact,
+          trap_name: p.alarm_name ?? p.exact_alarm_name ?? p.name,
+          description: p.description ?? p.raising_condition ?? p.condition,
+          remedy: p.official_corrective_action ?? p.corrective_action ?? p.remedy ?? p.resolution,
+          technical_info: [p.official_diagnostics, p.official_validation, p.required_tools_or_measurements].filter(Boolean).join("\\n"),
+          product_family: row.product_family ?? p.product_family,
+          product_model: row.product_model ?? p.product_model,
+          hardware_module: row.hardware_module ?? p.hardware_module,
+          evidence_classification: row.evidence_classification ?? p.evidence_classification,
+          source_url: row.source_url ?? p.source_url,
+        };
+      }) : [])];
     if (!Array.isArray(data) || !data.length) {
       return baseResult("keystats_table", "not_found", normalized, ["The alarm identifier was not found in the approved Trap Knowledge table."]);
     }
