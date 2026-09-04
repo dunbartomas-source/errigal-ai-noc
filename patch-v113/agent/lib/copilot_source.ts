@@ -1,4 +1,16 @@
 import { COPILOT_CASES } from "./copilot_cases";
+function supabaseReferenceDataConfigured(): boolean {
+  return Boolean(String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim());
+}
+
+async function supabaseRows(table: string, identifier: string, select: string) {
+  const base = String(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://uwtzymebvqsnyplezeqc.supabase.co").replace(/\/$/, "");
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+  const url = `${base}/rest/v1/${table}?select=${encodeURIComponent(select)}&alarm_identifier=ilike.${encodeURIComponent(identifier)}&limit=250`;
+  const response = await fetch(url, { headers: { apikey: key, authorization: `Bearer ${key}` }, cache: "no-store" });
+  if (!response.ok) throw new Error(`Supabase HTTP ${response.status}`);
+  return response.json();
+}
 
 export type CopilotSourceMode = "synthetic" | "keystats";
 
@@ -22,7 +34,7 @@ export type CopilotSourceResult =
 
 function configuredSource(): CopilotSourceMode {
   const requested = String(process.env.AI_NOC_DATA_SOURCE ?? "synthetic").toLowerCase();
-  return requested === "keystats" ? "keystats" : "synthetic";
+  return requested === "keystats" || supabaseReferenceDataConfigured() ? "keystats" : "synthetic";
 }
 
 const DEMO_PREFIX = "DEMO-";
@@ -255,6 +267,7 @@ function toCaseData(identifier: string, evidence: any) {
 }
 
 async function getKeystatsCase(identifier: string): Promise<CopilotSourceResult> {
+  if (supabaseReferenceDataConfigured()) return getSupabaseCase(identifier);
   const url = serviceUrl(identifier);
   if (!url) {
     return {
@@ -323,6 +336,21 @@ async function getKeystatsCase(identifier: string): Promise<CopilotSourceResult>
         }`,
       ],
     };
+  }
+}
+
+async function getSupabaseCase(identifier: string): Promise<CopilotSourceResult> {
+  const normalized = normalizedIdentifier(identifier);
+  try {
+  const [traps, patterns] = await Promise.all([
+    supabaseRows("noc_trap_knowledge", normalized, "alarm_identifier,context,trap_name,description,remedy,technical_info,source_version,source_updated_at"),
+    supabaseRows("noc_sanitized_resolution_patterns", normalized, "alarm_identifier,action_category,root_cause_category,outcome_count,success_count,source_version"),
+  ]);
+  const evidence = { status: traps?.length || patterns?.length ? "success" : "not_found", canonicalAlarmIdentifier: normalized, trapKnowledge: traps ?? [], resolutionInfo: patterns ?? [], isLive: true, warnings: [] };
+  if (evidence.status !== "success") return { status: "not_found", source: "keystats", read_only: true, is_live: false, case_data: null, warnings: ["No matching alarm identifier in the approved Supabase reference tables."] };
+  return { status: "success", source: "keystats", read_only: true, is_live: true, case_data: toCaseData(normalized, evidence), warnings: [] };
+  } catch (error) {
+    return { status: "source_unavailable", source: "keystats", read_only: true, is_live: false, case_data: null, warnings: [`Supabase reference lookup unavailable: ${error instanceof Error ? error.message : "unknown error"}`] };
   }
 }
 

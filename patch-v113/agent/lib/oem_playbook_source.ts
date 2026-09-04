@@ -1,4 +1,16 @@
 import { COPILOT_CASES } from "./copilot_cases";
+function supabaseReferenceDataConfigured(): boolean {
+  return Boolean(String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim());
+}
+
+async function supabaseRows(table: string, identifier: string, select: string) {
+  const base = String(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://uwtzymebvqsnyplezeqc.supabase.co").replace(/\/$/, "");
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+  const url = `${base}/rest/v1/${table}?select=${encodeURIComponent(select)}&alarm_identifier=ilike.${encodeURIComponent(identifier)}&limit=250`;
+  const response = await fetch(url, { headers: { apikey: key, authorization: `Bearer ${key}` }, cache: "no-store" });
+  if (!response.ok) throw new Error(`Supabase HTTP ${response.status}`);
+  return response.json();
+}
 
 export type OemPlaybookSource = "keystats_table" | "synthetic_demo";
 export type OemPlaybookStatus =
@@ -420,6 +432,7 @@ export function buildOemAlarmPlaybookFromRows(
 }
 
 async function fromOemTable(identifier: string): Promise<OemAlarmPlaybookResult> {
+  if (supabaseReferenceDataConfigured()) return fromSupabaseTrapKnowledge(identifier);
   const normalized = normalizeAlarmIdentifier(identifier);
   const url = tableServiceUrl(normalized);
   if (!url) {
@@ -462,6 +475,21 @@ async function fromOemTable(identifier: string): Promise<OemAlarmPlaybookResult>
   } catch (error) {
     return baseResult("keystats_table", "source_unavailable", normalized, [
       `Read-only Trap Knowledge adapter unavailable: ${error instanceof Error ? error.message : "unknown error"}`,
+    ]);
+  }
+}
+
+async function fromSupabaseTrapKnowledge(identifier: string): Promise<OemAlarmPlaybookResult> {
+  const normalized = normalizeAlarmIdentifier(identifier);
+  try {
+    const data = await supabaseRows("noc_trap_knowledge", normalized, "alarm_identifier,context,trap_name,description,remedy,technical_info,source_version,source_updated_at");
+    if (!Array.isArray(data) || !data.length) {
+      return baseResult("keystats_table", "not_found", normalized, ["The alarm identifier was not found in the approved Trap Knowledge table."]);
+    }
+    return buildOemAlarmPlaybookFromRows("keystats_table", normalized, normalized, data, ["Read from the complete Supabase Trap Knowledge table using exact identifier matching."]);
+  } catch (error) {
+    return baseResult("keystats_table", "source_unavailable", normalized, [
+      `Supabase Trap Knowledge lookup unavailable: ${error instanceof Error ? error.message : "unknown error"}`,
     ]);
   }
 }
@@ -535,8 +563,8 @@ export async function getOemAlarmPlaybook(
   if (demoModeAllowed() && demoSourceAlarmIdentifier(alarmIdentifier)) {
     return fromSyntheticCases(alarmIdentifier);
   }
-  const source = String(process.env.AI_NOC_DATA_SOURCE ?? "synthetic").toLowerCase();
-  return source === "keystats"
+  const source = String(process.env.AI_NOC_DATA_SOURCE ?? "").toLowerCase();
+  return source === "keystats" || supabaseReferenceDataConfigured()
     ? fromOemTable(alarmIdentifier)
     : fromSyntheticCases(alarmIdentifier);
 }
