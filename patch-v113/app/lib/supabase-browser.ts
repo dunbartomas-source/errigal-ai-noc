@@ -17,7 +17,10 @@ let browserClient: SupabaseClient | null = null;
 
 export function getSupabaseBrowserClient() {
   browserClient ??= createBrowserClient(supabaseUrl, supabasePublishableKey, {
-    auth: { flowType: "pkce" },
+    // Magic links are deliberately opened in email clients and can therefore
+    // return in a different browser context. Implicit links carry the session
+    // in the callback URL and do not depend on a device-local PKCE verifier.
+    auth: { flowType: "implicit" },
   });
   return browserClient;
 }
