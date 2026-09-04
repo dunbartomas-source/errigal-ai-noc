@@ -35,6 +35,7 @@ type InvestigationHistoryEntry = {
 };
 
 const HISTORY_KEY = "errigal-ai-noc:investigation-history:v1";
+const ERRIGAL_ORGANIZATION_ID = "ec0144d4-b183-4c34-8054-7146e404dc7f";
 
 const STARTERS = [
   {
@@ -189,6 +190,29 @@ function investigationStage(messages: any[]): number {
   if (/universal context|network context|context investigation/.test(text)) return 3;
   if (/oem|trap knowledge|approved checklist|ai_noc_checklist/.test(text)) return 2;
   return 1;
+}
+
+function databaseStage(stage: number): string {
+  return [
+    "intake",
+    "oem_troubleshooting",
+    "context_investigation",
+    "correlation",
+    "resolution",
+  ][stage - 1] ?? "intake";
+}
+
+function displayStage(stage: string): number {
+  return {
+    intake: 1,
+    oem_troubleshooting: 2,
+    context_investigation: 3,
+    correlation: 4,
+    resolution: 5,
+    verification: 5,
+    resolved: 5,
+    escalation: 5,
+  }[stage] ?? 1;
 }
 
 function historyFromStorage(): InvestigationHistoryEntry[] {
@@ -451,26 +475,31 @@ function shouldShowRecommendationFeedback(
 function RecommendationFeedback({
   disabled,
   onSend,
+  onFeedback,
 }: {
   disabled: boolean;
   onSend: (message: string) => Promise<void>;
+  onFeedback: (outcome: "resolved" | "unresolved" | "not_attempted") => Promise<void>;
 }) {
   const choices = [
     {
       className: styles.feedbackWorked,
       label: "Yes - issue resolved",
+      outcome: "resolved" as const,
       message:
         "OPERATOR_FEEDBACK: I completed the latest recommended action and the issue appears resolved. Persist this outcome and begin explicit resolution validation; do not close the investigation until recovery is verified.",
     },
     {
       className: styles.feedbackFailed,
       label: "No - issue remains",
+      outcome: "unresolved" as const,
       message:
         "OPERATOR_FEEDBACK: I completed the latest recommended action but the issue remains. Persist it as an unsuccessful action and continue with the next safest evidence-led step.",
     },
     {
       className: "",
       label: "Not tried yet",
+      outcome: "not_attempted" as const,
       message:
         "OPERATOR_FEEDBACK: I have not tried the latest recommended action yet. Keep the investigation open and restate only the action, expected observation, and stop condition.",
     },
@@ -487,7 +516,12 @@ function RecommendationFeedback({
             className={`${styles.choiceButton} ${choice.className}`}
             disabled={disabled}
             key={choice.label}
-            onClick={() => void onSend(choice.message)}
+            onClick={() =>
+              void (async () => {
+                await onFeedback(choice.outcome);
+                await onSend(choice.message);
+              })()
+            }
             type="button"
           >
             {choice.label}
@@ -501,6 +535,8 @@ function RecommendationFeedback({
 export default function InvestigationChat({ sessionId }: { sessionId?: string }) {
   const [history, setHistory] = useState<InvestigationHistoryEntry[]>([]);
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
+  const [signedInUserId, setSignedInUserId] = useState<string | null>(null);
+  const [databaseInvestigationId, setDatabaseInvestigationId] = useState<string | null>(null);
   const { data, status, error, send, session, cancel } = useEveAgent({
     initialSession: sessionId ? { sessionId, streamIndex: 0 } : undefined,
     resume: Boolean(sessionId),
@@ -527,17 +563,53 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
   );
   const currentStage = useMemo(() => investigationStage(messages), [messages]);
 
-  useEffect(() => {
-    setHistory(historyFromStorage());
-  }, []);
+  useEffect(() => setHistory(historyFromStorage()), []);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
-    void supabase.auth.getUser().then(({ data }) => {
-      setSignedInEmail(data.user?.email ?? null);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSignedInEmail(session?.user.email ?? null);
+    async function initializeWorkspace() {
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      setSignedInEmail(user?.email ?? null);
+      setSignedInUserId(user?.id ?? null);
+      if (!user) return;
+
+      const membership = await supabase
+        .from("noc_organization_members")
+        .select("user_id")
+        .eq("organization_id", ERRIGAL_ORGANIZATION_ID)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!membership.data && !membership.error) {
+        await supabase.from("noc_organization_members").insert({
+          organization_id: ERRIGAL_ORGANIZATION_ID,
+          user_id: user.id,
+          role: "operator",
+          active: true,
+        });
+      }
+
+      const { data: savedHistory } = await supabase
+        .from("noc_investigations")
+        .select("eve_session_id, alarm_identifier, current_stage, updated_at")
+        .eq("organization_id", ERRIGAL_ORGANIZATION_ID)
+        .order("updated_at", { ascending: false })
+        .limit(8);
+      if (savedHistory?.length) {
+        setHistory(
+          savedHistory.map((item) => ({
+            sessionId: item.eve_session_id,
+            alarmIdentifier: item.alarm_identifier,
+            stage: displayStage(item.current_stage),
+            updatedAt: item.updated_at,
+          })),
+        );
+      }
+    }
+    void initializeWorkspace();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSignedInEmail(nextSession?.user.email ?? null);
+      setSignedInUserId(nextSession?.user.id ?? null);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -559,6 +631,26 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
       return next;
     });
   }, [activeSessionId, busy, currentAlarmIdentifier, currentStage, messages.length]);
+
+  useEffect(() => {
+    if (!activeSessionId || !signedInUserId || messages.length === 0 || busy) return;
+    const supabase = getSupabaseBrowserClient();
+    void supabase
+      .from("noc_investigations")
+      .upsert(
+        {
+          organization_id: ERRIGAL_ORGANIZATION_ID,
+          eve_session_id: activeSessionId,
+          alarm_identifier: currentAlarmIdentifier,
+          current_stage: databaseStage(currentStage),
+          created_by: signedInUserId,
+        },
+        { onConflict: "eve_session_id" },
+      )
+      .select("id")
+      .single()
+      .then(({ data }) => setDatabaseInvestigationId(data?.id ?? null));
+  }, [activeSessionId, busy, currentAlarmIdentifier, currentStage, messages.length, signedInUserId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -601,6 +693,18 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
     await getSupabaseBrowserClient().auth.signOut();
     setSignedInEmail(null);
     window.location.assign("/sign-in");
+  }
+
+  async function recordRecommendationFeedback(
+    outcome: "resolved" | "unresolved" | "not_attempted",
+  ) {
+    if (!databaseInvestigationId || !signedInUserId) return;
+    await getSupabaseBrowserClient().from("noc_recommendation_feedback").insert({
+      organization_id: ERRIGAL_ORGANIZATION_ID,
+      investigation_id: databaseInvestigationId,
+      outcome,
+      submitted_by: signedInUserId,
+    });
   }
 
   function downloadSummary() {
@@ -872,7 +976,11 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
                         />
                       ) : null}
                       {showRecommendationFeedback ? (
-                        <RecommendationFeedback disabled={busy} onSend={sendMessage} />
+                        <RecommendationFeedback
+                          disabled={busy}
+                          onFeedback={recordRecommendationFeedback}
+                          onSend={sendMessage}
+                        />
                       ) : null}
                     </div>
                   </article>
