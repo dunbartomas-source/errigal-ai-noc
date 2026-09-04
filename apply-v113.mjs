@@ -143,6 +143,12 @@ if (!pkg.includes('"ai": "7.0.90"')) {
     '"@ai-sdk/deepseek": "^3.0.36",\n    "ai": "7.0.90",',
   );
 }
+if (!pkg.includes('"@supabase/ssr": "0.12.5"')) {
+  pkg = pkg.replace(
+    '"@ai-sdk/deepseek": "^3.0.36",',
+    '"@ai-sdk/deepseek": "^3.0.36",\n    "@supabase/ssr": "0.12.5",\n    "@supabase/supabase-js": "2.115.0",',
+  );
+}
 JSON.parse(pkg);
 writeFileSync("package.json", pkg);
 
