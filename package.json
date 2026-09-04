@@ -3,9 +3,9 @@
   "version": "1.13.0",
   "private": true,
   "scripts": {
-    "build": "node prepare-source.mjs && node fix-source.mjs && node apply-v113.mjs && next build && node scripts/provider-smoke.mjs",
-    "dev": "node prepare-source.mjs && node fix-source.mjs && node apply-v113.mjs && next dev",
-    "validate:v113": "node prepare-source.mjs && node fix-source.mjs && node apply-v113.mjs && npx tsc --noEmit"
+    "dev": "next dev",
+    "build": "next build && node scripts/provider-smoke.mjs",
+    "start": "next start"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.36",
@@ -22,5 +22,7 @@
     "@types/react-dom": "^19.1.9",
     "typescript": "^5.9.2"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

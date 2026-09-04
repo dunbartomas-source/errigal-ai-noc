@@ -50,6 +50,7 @@ const v113Paths = [
   "agent/subagents/resolution-intelligence/instructions.md",
   "agent/subagents/resolution-intelligence/tools/search_resolution_history.ts",
   "app/page.tsx",
+  "app/lib/supabase-browser.ts",
   "app/api/health/route.ts",
   "app/api/internal/oem-catalogue-check/route.ts",
   "app/api/internal/oem-catalogue-coverage/route.ts",

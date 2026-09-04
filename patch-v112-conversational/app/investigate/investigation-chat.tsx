@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useEveAgent } from "eve/react";
+import { getSupabaseBrowserClient } from "../lib/supabase-browser";
 import styles from "./investigation-chat.module.css";
 
 type ChecklistControl = {
@@ -499,6 +500,10 @@ function RecommendationFeedback({
 
 export default function InvestigationChat({ sessionId }: { sessionId?: string }) {
   const [history, setHistory] = useState<InvestigationHistoryEntry[]>([]);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPanelOpen, setAuthPanelOpen] = useState(false);
+  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
+  const [authMessage, setAuthMessage] = useState("");
   const { data, status, error, send, session, cancel } = useEveAgent({
     initialSession: sessionId ? { sessionId, streamIndex: 0 } : undefined,
     resume: Boolean(sessionId),
@@ -527,6 +532,17 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
 
   useEffect(() => {
     setHistory(historyFromStorage());
+  }, []);
+
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    void supabase.auth.getUser().then(({ data }) => {
+      setSignedInEmail(data.user?.email ?? null);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSignedInEmail(session?.user.email ?? null);
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -582,6 +598,27 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
     void sendMessage(
       "ENTRY_MODE: full. Alarm identifier DEMO-PWR-FAIL. This is the clearly labelled synthetic demo incident. I have not completed any OEM troubleshooting yet. Start with the demo Trap Knowledge checklist and guide me one step at a time.",
     );
+  }
+
+  async function sendSignInLink() {
+    const email = authEmail.trim();
+    if (!email) return;
+    setAuthMessage("Sending sign-in link…");
+    const { error: signInError } = await getSupabaseBrowserClient().auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setAuthMessage(
+      signInError
+        ? `Could not send the sign-in link: ${signInError.message}`
+        : "Check your email for a secure sign-in link.",
+    );
+  }
+
+  async function signOut() {
+    await getSupabaseBrowserClient().auth.signOut();
+    setSignedInEmail(null);
+    setAuthMessage("");
   }
 
   function downloadSummary() {
@@ -703,6 +740,15 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
             <h1>Incident investigation</h1>
           </div>
           <div className={styles.statusGroup}>
+            {signedInEmail ? (
+              <button className={styles.headerButton} onClick={() => void signOut()} type="button">
+                Sign out
+              </button>
+            ) : (
+              <button className={styles.headerButton} onClick={() => setAuthPanelOpen(true)} type="button">
+                Sign in
+              </button>
+            )}
             {messages.length ? (
               <button className={styles.headerButton} onClick={downloadSummary} type="button">
                 Download handover
@@ -727,6 +773,29 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
             ) : null}
           </div>
         </header>
+
+        {authPanelOpen ? (
+          <div className={styles.authPanel} role="dialog" aria-label="Sign in to AI-NOC">
+            <div>
+              <strong>Sign in to AI-NOC</strong>
+              <span>Use your work email to access saved investigations and feedback.</span>
+            </div>
+            <input
+              autoComplete="email"
+              onChange={(event) => setAuthEmail(event.target.value)}
+              placeholder="you@company.com"
+              type="email"
+              value={authEmail}
+            />
+            <button disabled={!authEmail.trim()} onClick={() => void sendSignInLink()} type="button">
+              Email me a sign-in link
+            </button>
+            <button className={styles.authClose} onClick={() => setAuthPanelOpen(false)} type="button">
+              Close
+            </button>
+            {authMessage ? <p>{authMessage}</p> : null}
+          </div>
+        ) : null}
 
         <div className={styles.thread}>
           {messages.length === 0 ? (
