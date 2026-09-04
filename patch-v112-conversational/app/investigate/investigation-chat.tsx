@@ -500,10 +500,7 @@ function RecommendationFeedback({
 
 export default function InvestigationChat({ sessionId }: { sessionId?: string }) {
   const [history, setHistory] = useState<InvestigationHistoryEntry[]>([]);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPanelOpen, setAuthPanelOpen] = useState(false);
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
-  const [authMessage, setAuthMessage] = useState("");
   const { data, status, error, send, session, cancel } = useEveAgent({
     initialSession: sessionId ? { sessionId, streamIndex: 0 } : undefined,
     resume: Boolean(sessionId),
@@ -600,25 +597,10 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
     );
   }
 
-  async function sendSignInLink() {
-    const email = authEmail.trim();
-    if (!email) return;
-    setAuthMessage("Sending sign-in link…");
-    const { error: signInError } = await getSupabaseBrowserClient().auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    setAuthMessage(
-      signInError
-        ? `Could not send the sign-in link: ${signInError.message}`
-        : "Check your email for a secure sign-in link.",
-    );
-  }
-
   async function signOut() {
     await getSupabaseBrowserClient().auth.signOut();
     setSignedInEmail(null);
-    setAuthMessage("");
+    window.location.assign("/sign-in");
   }
 
   function downloadSummary() {
@@ -745,7 +727,7 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
                 Sign out
               </button>
             ) : (
-              <button className={styles.headerButton} onClick={() => setAuthPanelOpen(true)} type="button">
+              <button className={styles.headerButton} onClick={() => window.location.assign("/sign-in")} type="button">
                 Sign in
               </button>
             )}
@@ -773,29 +755,6 @@ export default function InvestigationChat({ sessionId }: { sessionId?: string })
             ) : null}
           </div>
         </header>
-
-        {authPanelOpen ? (
-          <div className={styles.authPanel} role="dialog" aria-label="Sign in to AI-NOC">
-            <div>
-              <strong>Sign in to AI-NOC</strong>
-              <span>Use your work email to access saved investigations and feedback.</span>
-            </div>
-            <input
-              autoComplete="email"
-              onChange={(event) => setAuthEmail(event.target.value)}
-              placeholder="you@company.com"
-              type="email"
-              value={authEmail}
-            />
-            <button disabled={!authEmail.trim()} onClick={() => void sendSignInLink()} type="button">
-              Email me a sign-in link
-            </button>
-            <button className={styles.authClose} onClick={() => setAuthPanelOpen(false)} type="button">
-              Close
-            </button>
-            {authMessage ? <p>{authMessage}</p> : null}
-          </div>
-        ) : null}
 
         <div className={styles.thread}>
           {messages.length === 0 ? (

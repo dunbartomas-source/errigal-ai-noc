@@ -16,6 +16,8 @@ const supabasePublishableKey =
 let browserClient: SupabaseClient | null = null;
 
 export function getSupabaseBrowserClient() {
-  browserClient ??= createBrowserClient(supabaseUrl, supabasePublishableKey);
+  browserClient ??= createBrowserClient(supabaseUrl, supabasePublishableKey, {
+    auth: { flowType: "pkce" },
+  });
   return browserClient;
 }

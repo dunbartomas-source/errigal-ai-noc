@@ -1,4 +1,4 @@
-import InvestigationChat from "./investigate/investigation-chat";
+import DashboardGate from "./dashboard-gate";
 
 export default async function Home({
   searchParams,
@@ -6,5 +6,5 @@ export default async function Home({
   searchParams: Promise<{ session?: string }>;
 }) {
   const { session } = await searchParams;
-  return <InvestigationChat sessionId={session?.trim() || undefined} />;
+  return <DashboardGate sessionId={session?.trim() || undefined} />;
 }

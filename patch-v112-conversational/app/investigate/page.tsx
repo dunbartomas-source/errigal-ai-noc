@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import InvestigationChat from "./investigation-chat";
+import DashboardGate from "../dashboard-gate";
 
 export const metadata: Metadata = {
   title: "Guided Investigation | Errigal AI-NOC",
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function GuidedInvestigationPage() {
-  return <InvestigationChat />;
+  return <DashboardGate />;
 }
