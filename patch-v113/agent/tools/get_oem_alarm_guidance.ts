@@ -66,7 +66,9 @@ export default defineDynamic({
       const explicitEntryMode = entryModeFromText(text);
       const state = investigationState.get();
 
-      if (state.oem_guidance_loaded || hasToolMessage(messages, "get_oem_alarm_guidance")) {
+      // Keep the deterministic lookup available after a not-found/error result
+      // so the operator can correct the identifier and retry in the same turn.
+      if (state.oem_guidance_loaded) {
         return null;
       }
 
@@ -80,8 +82,6 @@ export default defineDynamic({
       ) {
         return null;
       }
-
-      if (!oemSkillLoaded(messages)) return null;
 
       return defineTool({
         description:
