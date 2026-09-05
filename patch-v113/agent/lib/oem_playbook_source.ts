@@ -12,6 +12,24 @@ async function supabaseRows(table: string, identifier: string, select: string) {
   return response.json();
 }
 
+async function supabaseOemRows(identifier: string, select: string) {
+  // OEM catalogues are allowed to use either a numeric/source identifier or
+  // an exact alarm name (common in Corning ONE and legacy MobileAccess data).
+  const [identifierRows, nameRows] = await Promise.all([
+    supabaseRows("noc_oem_knowledge_records", identifier, select),
+    (async () => {
+      const base = String(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://uwtzymebvqsnyplezeqc.supabase.co").replace(/\/$/, "");
+      const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+      const url = `${base}/rest/v1/noc_oem_knowledge_records?select=${encodeURIComponent(select)}&payload->>exact_alarm_name=ilike.${encodeURIComponent(identifier)}&limit=250`;
+      const response = await fetch(url, { headers: { apikey: key, authorization: `Bearer ${key}` }, cache: "no-store" });
+      if (!response.ok) throw new Error(`Supabase HTTP ${response.status}`);
+      return response.json();
+    })(),
+  ]);
+  const merged = [...(Array.isArray(identifierRows) ? identifierRows : []), ...(Array.isArray(nameRows) ? nameRows : [])];
+  return Array.from(new Map(merged.map((row: any) => [row.content_hash ?? JSON.stringify(row), row])).values());
+}
+
 export type OemPlaybookSource = "keystats_table" | "synthetic_demo";
 export type OemPlaybookStatus =
   | "success"
@@ -431,8 +449,10 @@ export function buildOemAlarmPlaybookFromRows(
   });
 }
 
-async function fromOemTable(identifier: string): Promise<OemAlarmPlaybookResult> {
-  if (supabaseReferenceDataConfigured()) return fromSupabaseTrapKnowledge(identifier);
+export type OemLookupContext = { oem?: string; product_family?: string; product_model?: string };
+
+async function fromOemTable(identifier: string, context?: OemLookupContext): Promise<OemAlarmPlaybookResult> {
+  if (supabaseReferenceDataConfigured()) return fromSupabaseTrapKnowledge(identifier, context);
   const normalized = normalizeAlarmIdentifier(identifier);
   const url = tableServiceUrl(normalized);
   if (!url) {
@@ -479,19 +499,24 @@ async function fromOemTable(identifier: string): Promise<OemAlarmPlaybookResult>
   }
 }
 
-async function fromSupabaseTrapKnowledge(identifier: string): Promise<OemAlarmPlaybookResult> {
+async function fromSupabaseTrapKnowledge(identifier: string, context?: OemLookupContext): Promise<OemAlarmPlaybookResult> {
   const normalized = normalizeAlarmIdentifier(identifier);
   try {
     const [legacy, oemRecords] = await Promise.all([
       supabaseRows("noc_trap_knowledge", normalized, "alarm_identifier,context,trap_name,description,remedy,technical_info,source_version,source_updated_at"),
-      supabaseRows("noc_oem_knowledge_records", normalized, "oem,record_type,alarm_identifier,product_family,product_model,hardware_module,evidence_classification,confidence,source_id,source_url,payload,source_version"),
+      supabaseOemRows(normalized, "oem,record_type,alarm_identifier,product_family,product_model,hardware_module,evidence_classification,confidence,source_id,source_url,payload,source_version,content_hash"),
     ]);
-    const data = [...(Array.isArray(legacy) ? legacy : []), ...(Array.isArray(oemRecords) ? oemRecords
+    const filteredOemRecords = (Array.isArray(oemRecords) ? oemRecords : []).filter((row: any) =>
+      (!context?.oem || normalizeAlarmIdentifier(row.oem) === normalizeAlarmIdentifier(context.oem)) &&
+      (!context?.product_family || normalizeAlarmIdentifier(row.product_family ?? row.payload?.product_family) === normalizeAlarmIdentifier(context.product_family)) &&
+      (!context?.product_model || normalizeAlarmIdentifier(row.product_model ?? row.payload?.product_model ?? row.payload?.models).includes(normalizeAlarmIdentifier(context.product_model)))
+    );
+    const data = [...(Array.isArray(legacy) ? legacy : []), ...(filteredOemRecords
       .filter((row: any) => ["alarm_catalogue", "jma_teko_alarm_catalogue", "oem_playbooks", "jma_teko_playbook_records", "jma_teko_scenarios"].includes(String(row.record_type)))
       .map((row: any) => {
         const p = row.payload ?? {};
         return {
-          alarm_identifier: row.alarm_identifier ?? p.alarm_identifier ?? p.alarm_id ?? p.identifier,
+          alarm_identifier: row.alarm_identifier ?? p.alarm_identifier ?? p.alarm_id ?? p.identifier ?? p.exact_alarm_name,
           oem: row.oem,
           context: p.condition ?? p.condition_description ?? p.raising_condition ?? p.service_impact,
           trap_name: p.alarm_name ?? p.exact_alarm_name ?? p.name,
@@ -504,7 +529,7 @@ async function fromSupabaseTrapKnowledge(identifier: string): Promise<OemAlarmPl
           evidence_classification: row.evidence_classification ?? p.evidence_classification,
           source_url: row.source_url ?? p.source_url,
         };
-      }) : [])];
+      }))];
     if (!Array.isArray(data) || !data.length) {
       return baseResult("keystats_table", "not_found", normalized, ["The alarm identifier was not found in the approved Trap Knowledge table."]);
     }
@@ -581,12 +606,13 @@ function fromSyntheticCases(identifier: string): OemAlarmPlaybookResult {
 
 export async function getOemAlarmPlaybook(
   alarmIdentifier: string,
+  context?: OemLookupContext,
 ): Promise<OemAlarmPlaybookResult> {
   if (demoModeAllowed() && demoSourceAlarmIdentifier(alarmIdentifier)) {
     return fromSyntheticCases(alarmIdentifier);
   }
   const source = String(process.env.AI_NOC_DATA_SOURCE ?? "").toLowerCase();
   return source === "keystats" || supabaseReferenceDataConfigured()
-    ? fromOemTable(alarmIdentifier)
+    ? fromOemTable(alarmIdentifier, context)
     : fromSyntheticCases(alarmIdentifier);
 }

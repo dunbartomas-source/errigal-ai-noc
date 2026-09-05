@@ -85,12 +85,17 @@ export default defineDynamic({
 
       return defineTool({
         description:
-          "Read controlled Trap Knowledge guidance for one alarm identifier. Matching is case-insensitive exact matching that preserves spaces, underscores and punctuation. Software/firmware version is intentionally not a filter. Equivalent version rows deduplicate; materially conflicting description/remedy/technical_info fails closed. The mixed comment field is ignored and OEM is returned only when a dedicated OEM/vendor/manufacturer field exists. Never fuzzy-match.",
-        inputSchema: z.object({ alarm_identifier: z.string().min(1) }).strict(),
-        execute: async ({ alarm_identifier }) => {
+            "Read controlled Trap Knowledge guidance for one alarm identifier or exact alarm name. Matching is case-insensitive exact matching that preserves spaces, underscores and punctuation. Optionally provide OEM, product family, or model context to disambiguate shared alarm names. Software/firmware version is intentionally not a filter. Equivalent version rows deduplicate; materially conflicting description/remedy/technical_info fails closed. Never fuzzy-match.",
+        inputSchema: z.object({
+          alarm_identifier: z.string().min(1),
+          oem: z.string().min(1).optional(),
+          product_family: z.string().min(1).optional(),
+          product_model: z.string().min(1).optional(),
+        }).strict(),
+        execute: async ({ alarm_identifier, oem, product_family, product_model }) => {
           const startedAt = Date.now();
           const investigationId = ensureInvestigationId();
-          const result = await getOemAlarmPlaybook(alarm_identifier);
+          const result = await getOemAlarmPlaybook(alarm_identifier, { oem, product_family, product_model });
           const now = new Date().toISOString();
 
           if (result.status === "success") {
